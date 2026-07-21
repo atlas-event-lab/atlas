@@ -1,0 +1,58 @@
+# Kafka UI (kafbat fork — provectus is archived) for topic monitoring/debugging.
+# Connects to the Strimzi bootstrap. Deployed in atlas-data (Kafka tooling).
+# Apply:  kubectl apply -f kafka-ui.yaml
+# Access: kubectl -n atlas-data port-forward svc/kafka-ui 8085:8080  ->  http://localhost:8085
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+  namespace: atlas-data
+  labels: { app: kafka-ui, app.kubernetes.io/part-of: atlas }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: kafka-ui }
+  template:
+    metadata:
+      labels: { app: kafka-ui, app.kubernetes.io/part-of: atlas }
+    spec:
+      containers:
+        - name: kafka-ui
+          image: docker.io/kafbat/kafka-ui:v1.5.0      # pinned (never :latest — reproducible, avoids silent drift)
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DYNAMIC_CONFIG_ENABLED
+              value: "true"
+            - name: KAFKA_CLUSTERS_0_NAME
+              value: atlas
+            - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+              value: atlas-kafka-bootstrap.atlas-data:9092
+            # Let the JVM use the raised container memory (else heap defaults to ~25% and
+            # the app sits near the limit -> OOMKilled -> the UI "disconnects").
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=70"
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 20
+          livenessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 40
+          resources:
+            # Memory was the bottleneck: ~400Mi used at idle against a 512Mi limit -> OOMKills.
+            # Bump the ceiling and reserve the request so the scheduler guarantees it.
+            # CPU stays modest (measured ~2m) with no limit, so it can burst if ever needed.
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+  namespace: atlas-data
+  labels: { app: kafka-ui }
+spec:
+  selector: { app: kafka-ui }
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,47 @@
+# KEDA ScaledObject — scale payment-service by CONSUMER LAG, not CPU.
+#
+# Why: payment-service is I/O-bound (provider HTTP call + JDBC), so the CPU-based HPA barely
+# triggers while the inventory.reserved consumer lag grows. KEDA's native Kafka scaler reads the
+# lag straight from the broker and scales the Deployment on it. Source of truth for the design:
+#   experiments/01-high-booking-concurrency/payment-service-scaling.md §3.1
+#
+# Prereq: KEDA installed (see README-keda.md). The chart-side CPU HPA is disabled and the
+# Deployment omits `replicas` (values/payment.yaml: autoscaling.enabled=false, keda.enabled=true),
+# so this ScaledObject is the sole owner of the replica count.
+#
+# Apply:  kubectl apply -f deploy/platform/keda/payment-scaledobject.yaml
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: payment-service
+  namespace: atlas-apps
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: atlas
+spec:
+  scaleTargetRef:
+    name: payment-service          # the Deployment (Helm fullname)
+  minReplicaCount: 1               # never 0 — payment must stay up for the Saga
+  maxReplicaCount: 4               # ADR-0015: 4 pods x concurrency 3 = 12 consumers = 12 partitions
+  cooldownPeriod: 300              # wait before scaling back after the last trigger fires
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300   # damp scale-down to avoid flapping
+        scaleUp:
+          stabilizationWindowSeconds: 0     # scale up promptly when lag appears
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: atlas-kafka-bootstrap.atlas-data:9092
+        consumerGroup: payment-service
+        topic: inventory.reserved
+        # Target lag per replica: desiredReplicas ~= ceil(totalLag / lagThreshold), capped by
+        # maxReplicaCount and by the partition count. Raised 50 -> 100 for concurrency 3 (ADR-0015);
+        # tune from the Experiment 01 re-run.
+        lagThreshold: "100"
+        # Below this lag the trigger is inactive (stays at minReplicaCount).
+        activationLagThreshold: "10"
+        offsetResetPolicy: earliest

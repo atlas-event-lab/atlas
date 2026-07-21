@@ -1,0 +1,60 @@
+# CloudNativePG cluster for Atlas (in-cluster Postgres — roadmap §0/§6).
+# Operator install first:
+#   helm repo add cnpg https://cloudnative-pg.github.io/charts
+#   helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace
+#
+# Database-per-service is enforced by separate logical databases + per-service roles
+# (ARCH-002/ARCH-003). One CloudNativePG cluster (Stage A); break a service into its own
+# cluster only for an HA/contention experiment (Stage B).
+#
+# SECRETS: each role references a per-service Secret (SealedSecret, SEC-005). Use ONE
+# basic-auth Secret per service carrying FOUR keys so the SAME secret serves both sides:
+#   username, password            -> read by CloudNativePG for the role
+#   DB_USERNAME, DB_PASSWORD       -> read by the app (Helm envSecret)
+# username/DB_USERNAME MUST equal the role name below (e.g. booking_user).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: atlas-pg
+  namespace: atlas-data
+spec:
+  instances: 2                       # primary + 1 replica (failover)
+  primaryUpdateStrategy: unsupervised
+
+  storage:
+    size: 10Gi
+    storageClass: oci-bv             # verify: kubectl get storageclass
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+
+  managed:
+    roles:
+      - { name: user_user,        ensure: present, login: true, passwordSecret: { name: user-secret } }
+      - { name: flight_user,      ensure: present, login: true, passwordSecret: { name: flight-secret } }
+      - { name: hotel_user,       ensure: present, login: true, passwordSecret: { name: hotel-secret } }
+      - { name: inventory_user,   ensure: present, login: true, passwordSecret: { name: inventory-secret } }
+      - { name: travel_cart_user, ensure: present, login: true, passwordSecret: { name: travel-cart-secret } }
+      - { name: booking_user,     ensure: present, login: true, passwordSecret: { name: booking-secret } }
+      - { name: payment_user,     ensure: present, login: true, passwordSecret: { name: payment-secret } }
+      - { name: search_user,      ensure: present, login: true, passwordSecret: { name: search-secret } }
+      - { name: keycloak_user,    ensure: present, login: true, passwordSecret: { name: keycloak-db-secret } }
+
+  bootstrap:
+    initdb:
+      database: app                  # default db (unused by services); real DBs are Database CRs
+      owner: app
+
+  # Backups to S3-compatible object storage (vendor-neutral). Fill in when ready:
+  # backup:
+  #   barmanObjectStore:
+  #     destinationPath: s3://atlas-pg-backups/
+  #     endpointURL: https://<namespace>.compat.objectstorage.<region>.oraclecloud.com
+  #     s3Credentials:
+  #       accessKeyId:     { name: pg-backup-creds, key: ACCESS_KEY_ID }
+  #       secretAccessKey: { name: pg-backup-creds, key: SECRET_ACCESS_KEY }
+  #   retentionPolicy: "7d"
+
+  monitoring:
+    enablePodMonitor: true           # Phase 6: CNPG metrics scraped by kube-prometheus-stack

@@ -1,0 +1,59 @@
+# Helm values for Grafana Tempo (single-binary, lab profile). Phase 6c.
+# Install:
+#   helm upgrade --install tempo grafana/tempo -n atlas-observability -f tempo-values.yaml
+#
+# Produces Service `tempo` with: 3200 (query/API), 4317 (OTLP gRPC), 4318 (OTLP HTTP).
+# Apps push traces to http://tempo.atlas-observability:4318/v1/traces (set in each app's
+# management.otlp.tracing.endpoint). Version-sensitive chart — verify svc/ports after install.
+tempo:
+  retention: 168h                     # 7 days
+  storage:
+    trace:
+      backend: local
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits:   { memory: 4Gi }          # 1Gi died under query load; 2Gi then OOMKilled (137) at STARTUP
+                                        # once the metrics-generator was enabled (WAL replay + generator
+                                        # init together exceed 2Gi). 4Gi gives headroom; node is 16Gi.
+
+  # ── APM: metrics-generator (RED span metrics + service graph). Phase 7. ─────────────
+  # Derives per-service / per-endpoint Rate-Error-Duration metrics AND the service graph
+  # from incoming spans, then remote-writes them to Prometheus. This is the closest thing
+  # to a Datadog-style APM view in the LGTM stack; it complements the app-side
+  # http.server.requests histograms (Micrometer).
+  #
+  # Requires Prometheus to accept remote_write — see kube-prometheus-stack-values.yaml
+  # (prometheusSpec.enableRemoteWriteReceiver: true).
+  #
+  # Confirm the generator is producing series after install:
+  #   promQL  traces_spanmetrics_calls_total  and  traces_service_graph_request_total
+  metricsGenerator:
+    enabled: true
+    # kube-prometheus-stack Prometheus service (Helm release 'kps') in atlas-observability.
+    # Prometheus must accept remote_write (kube-prometheus-stack-values.yaml:
+    # prometheusSpec.enableRemoteWriteReceiver: true).
+    remoteWriteUrl: "http://kps-kube-prometheus-stack-prometheus.atlas-observability:9090/api/v1/write"
+
+  # The generator only emits when its processors are enabled for the tenant. The grafana/tempo
+  # chart renders `tempo.overrides` verbatim into Tempo's config `overrides:` block, so the
+  # processors go under overrides.defaults.metrics_generator (Tempo "standard overrides" format).
+  # NOTE: it is `overrides`, NOT `global_overrides` (that key is silently ignored → no processors).
+  overrides:
+    defaults:
+      metrics_generator:
+        processors:
+          - service-graphs
+          - span-metrics
+    per_tenant_override_config: /conf/overrides.yaml
+
+persistence:
+  enabled: true
+  storageClassName: oci-bv            # verify: kubectl get storageclass
+  size: 5Gi

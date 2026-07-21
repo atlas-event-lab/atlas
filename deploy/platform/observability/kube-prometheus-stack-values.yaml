@@ -1,0 +1,44 @@
+# Helm values for kube-prometheus-stack (Prometheus + Grafana + exporters). Phase 6a.
+# Install:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts && helm repo update
+#   helm upgrade --install kps prometheus-community/kube-prometheus-stack \
+#     -n atlas-observability --create-namespace -f kube-prometheus-stack-values.yaml
+#
+# Lean profile for the lab: short retention, Alertmanager off, modest resources.
+
+# Discover PodMonitors/ServiceMonitors in ALL namespaces (incl. our atlas-apps PodMonitors),
+# not just those carrying the release label.
+prometheus:
+  prometheusSpec:
+    retention: 12h                       # experiments are short bursts
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # APM (Phase 7): accept the RED/service-graph metrics that Tempo's metrics-generator
+    # remote-writes here (tempo-values.yaml: metricsGenerator.remoteWriteUrl).
+    enableRemoteWriteReceiver: true
+    # Store exemplars so a latency-histogram spike links straight to its Tempo trace.
+    # Micrometer already attaches exemplars to http.server.requests when tracing is on.
+    enableFeatures:
+      - exemplar-storage
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { memory: 1Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: oci-bv       # verify: kubectl get storageclass
+          accessModes: ["ReadWriteOnce"]
+          resources: { requests: { storage: 10Gi } }
+
+grafana:
+  # For the lab; change it, or wire an existingSecret. Access via port-forward (see README).
+  adminPassword: "atlas-admin"
+  defaultDashboardsEnabled: true         # cluster + node + JVM dashboards out of the box
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+
+alertmanager:
+  enabled: false                         # keep lean initially; enable when you add alerting
+
+# Keep the built-in exporters (node-exporter DaemonSet + kube-state-metrics) — cheap and useful.

@@ -1,0 +1,219 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Atlas — full LOCAL stack (published hub, prebuilt images).
+#
+# Runs everything on your machine from prebuilt GHCR images: Postgres, Kafka (KRaft),
+# Keycloak, Redis, the fake payment provider (WireMock), the nginx gateway, and all
+# 8 services.
+#
+#   DB_PASSWORD=atlas docker compose up -d
+#   curl http://localhost:8080/api/v1/...   (through the gateway)
+#
+# The service images are published by each repo's CI to
+# ghcr.io/atlas-event-lab/atlas-<service>. Set ATLAS_TAG to pin a version (default: latest).
+# To build from source instead (needs all service repos checked out), see the workspace
+# docker-compose.yml.
+#
+# Keycloak realm: your realm is yours (SDD). Export it to
+# deploy-local/keycloak/realm-atlas.json before `up` — see that folder's README.
+#
+# Issuer consistency: Keycloak is addressed as host.docker.internal:8180 from BOTH the
+# host and the containers, so a token minted from the host validates inside the containers.
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-issuer: &issuer "http://host.docker.internal:8180/realms/atlas"
+x-kafka: &kafka "kafka:9092"
+
+x-service-defaults: &svc
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  depends_on:
+    postgres: { condition: service_healthy }
+    kafka: { condition: service_healthy }
+    keycloak: { condition: service_started }
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-atlas}
+      POSTGRES_DB: booking_db
+    ports: ["5432:5432"]
+    volumes:
+      - ./deploy-local/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+      - atlas-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas -d booking_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  kafka:
+    image: apache/kafka:3.8.1        # KRaft single node, no ZooKeeper
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME: host.docker.internal
+      KC_HOSTNAME_PORT: "8180"
+      KC_HEALTH_ENABLED: "true"
+    ports: ["8180:8080"]
+    volumes:
+      - ./deploy-local/keycloak:/opt/keycloak/data/import:ro   # put realm-atlas.json here
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server","--maxmemory","192mb","--maxmemory-policy","allkeys-lru","--save","","--appendonly","no"]
+    ports: ["6379:6379"]
+
+  wiremock:
+    image: wiremock/wiremock:3.9.1
+    command: ["--global-response-templating"]
+    volumes:
+      - ./wiremock:/home/wiremock
+
+  gateway:
+    image: nginx:1.27-alpine
+    ports: ["8080:80"]              # single public entry point
+    volumes:
+      - ./gateway/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - booking-service
+      - flight-service
+      - hotel-service
+      - inventory-service
+      - search-service
+      - payment-service
+      - user-service
+      - travel-cart-service
+
+  # ── Application services (prebuilt images from GHCR) ────────────────────────
+  booking-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-booking-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/booking_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KAFKA_BOOTSTRAP_SERVERS: *kafka
+      KEYCLOAK_ISSUER_URI: *issuer
+      FLIGHT_SERVICE_URL: http://flight-service:8080
+      HOTEL_SERVICE_URL: http://hotel-service:8080
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+  flight-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-flight-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/flight_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KAFKA_BOOTSTRAP_SERVERS: *kafka
+      KEYCLOAK_ISSUER_URI: *issuer
+      INVENTORY_SERVICE_URL: http://inventory-service:8080
+
+  hotel-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-hotel-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/hotel_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KAFKA_BOOTSTRAP_SERVERS: *kafka
+      KEYCLOAK_ISSUER_URI: *issuer
+      INVENTORY_SERVICE_URL: http://inventory-service:8080
+
+  inventory-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-inventory-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KAFKA_BOOTSTRAP_SERVERS: *kafka
+      KEYCLOAK_ISSUER_URI: *issuer
+
+  search-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-search-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/search_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KAFKA_BOOTSTRAP_SERVERS: *kafka
+      KEYCLOAK_ISSUER_URI: *issuer
+
+  payment-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-payment-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/payment_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KAFKA_BOOTSTRAP_SERVERS: *kafka
+      KEYCLOAK_ISSUER_URI: *issuer
+      PAYMENT_PROVIDER_URL: http://wiremock:8080
+      # PAYMENT_PROVIDER_SCENARIO: DECLINED   # demo lever
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      wiremock: { condition: service_started }
+
+  user-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-user-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/user_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KEYCLOAK_ISSUER_URI: *issuer
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_started }
+
+  travel-cart-service:
+    <<: *svc
+    image: ghcr.io/atlas-event-lab/atlas-travel-cart-service:${ATLAS_TAG:-latest}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/travel_cart_db
+      DB_USERNAME: atlas
+      DB_PASSWORD: ${DB_PASSWORD:-atlas}
+      KEYCLOAK_ISSUER_URI: *issuer
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # EXCHANGE_RATE_API_URL: https://api.example.com/rates
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      redis: { condition: service_started }
+
+volumes:
+  atlas-pg:

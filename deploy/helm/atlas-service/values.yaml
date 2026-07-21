@@ -1,0 +1,100 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Default values for an Atlas service.
+# Deploy one release per service:  helm upgrade --install <svc> . -f values/<svc>.yaml
+# Port convention (SPEC-DEPLOY-001 §1.1): 8080 business API, 9090 actuator/management.
+# ──────────────────────────────────────────────────────────────────────────
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  # Override per service, e.g. ghcr.io/<org>/atlas-booking-service
+  repository: ghcr.io/atlas-event-lab/atlas-service
+  tag: ""                     # empty -> uses .Chart.AppVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []           # e.g. [{ name: ghcr-pull }]
+
+replicaCount: 1
+
+ports:
+  http: 8080                   # server.port
+  management: 9090             # management.server.port (actuator)
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 150m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 768Mi
+
+# Probes hit the Spring Boot health groups on the management port (9090), made public by
+# the dedicated actuator SecurityFilterChain in each service.
+probes:
+  type: http            # http = GET actuator health on probes.port | tcp = TCP fallback on http port
+  port: management      # 9090 (actuator). Only relevant for type=http.
+  startup:
+    path: /actuator/health/readiness
+    periodSeconds: 5
+    failureThreshold: 30       # ~150s budget for slow JVM start
+  liveness:
+    path: /actuator/health/liveness
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    path: /actuator/health/readiness
+    periodSeconds: 10
+    failureThreshold: 3
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+# Spread replicas across nodes (turn on for HA services: booking/inventory/payment).
+podAntiAffinity:
+  enabled: false
+
+# Non-secret config -> ConfigMap -> injected via envFrom.
+config: {}
+#  KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap:9092
+#  KEYCLOAK_ISSUER_URI: http://keycloak.atlas-system/realms/atlas
+
+# Secret with DB creds etc. Created out-of-band (SealedSecret); injected via envFrom.
+envSecret:
+  enabled: false
+  name: ""                     # e.g. booking-secret
+
+# Extra individual env entries (raw k8s env list: name/value or name/valueFrom).
+extraEnv: []
+
+serviceAccount:
+  create: true
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+# Prometheus scrape annotations (wired in Phase 6; off until actuator exposes /prometheus).
+metrics:
+  enabled: true
+  path: /actuator/prometheus
+
+nodeSelector: {}
+tolerations: []

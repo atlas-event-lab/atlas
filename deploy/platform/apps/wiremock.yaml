@@ -1,0 +1,68 @@
+# WireMock — Fake Payment Provider (Phase 5). payment-service calls it at
+# PAYMENT_PROVIDER_URL=http://wiremock.atlas-apps:8080 (see values/payment.yaml).
+#
+# Mappings come from the repo's wiremock/mappings/. Create the ConfigMap from those files
+# BEFORE applying this manifest. Run from deploy/platform/ (mappings are at the repo root):
+#   kubectl create configmap wiremock-mappings -n atlas-apps \
+#     --from-file=../../wiremock/mappings/ --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiremock
+  namespace: atlas-apps
+  labels: { app: wiremock, app.kubernetes.io/part-of: atlas }
+spec:
+  # No static `replicas`: KEDA owns the count (deploy/platform/keda/wiremock-scaledobject.yaml,
+  # ADR-0017). Leaving it here would fight KEDA's HPA on every reconcile.
+  selector:
+    matchLabels: { app: wiremock }
+  template:
+    metadata:
+      labels: { app: wiremock, app.kubernetes.io/part-of: atlas }
+    spec:
+      containers:
+        - name: wiremock
+          image: docker.io/wiremock/wiremock:3.9.1   # fully-qualified: OKE nodes enforce short-name resolution
+          args: ["--global-response-templating"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: mappings
+              mountPath: /home/wiremock/mappings
+          readinessProbe:
+            httpGet: { path: /__admin/health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            # Relaxed so a briefly slow /__admin/health under load-test concurrency doesn't get the
+            # pod SIGTERM'd (previous restart was a liveness kill: exit 143, not OOM). ~60s of
+            # sustained unresponsiveness before a restart.
+            httpGet: { path: /__admin/health, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            # Load-test metrics showed the pod both CPU-throttled (~56% of CFS periods at 250m) and
+            # memory pegged at the 256Mi limit right up to the restart (SIGTERM/143 liveness kill, not
+            # OOM). Undersized on both axes → bump CPU and memory; a 2nd replica splits the load.
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: mappings
+          configMap:
+            name: wiremock-mappings
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiremock
+  namespace: atlas-apps
+  labels: { app: wiremock }
+spec:
+  selector: { app: wiremock }
+  ports:
+    - port: 8080
+      targetPort: 8080

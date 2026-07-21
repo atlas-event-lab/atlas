@@ -1,0 +1,455 @@
+// Shared, environment-driven configuration for every Atlas k6 experiment.
+//
+// Nothing here is secret and nothing is hard-coded to one cluster: every value comes from
+// an environment variable (k6 reads them via __ENV) so the same scripts run against any
+// Atlas deployment. See .env.example for the full list and copy it before running.
+//
+// Usage in a script:  import { CONFIG, requireEnv } from '../lib/k6/config.js';
+
+// Read an env var, falling back to a default. Empty string counts as "unset".
+function env(name, fallback) {
+  const v = __ENV[name];
+  return v === undefined || v === '' ? fallback : v;
+}
+
+// Read an env var that MUST be provided; throws early (in setup) with a clear message.
+export function requireEnv(name) {
+  const v = __ENV[name];
+  if (v === undefined || v === '') {
+    throw new Error(
+      `Missing required env var ${name}. Copy .env.example, fill it in, and re-run ` +
+      `(e.g. \`set -a; source .env; set +a; k6 run ...\`).`,
+    );
+  }
+  return v;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Curated route table — FILL THIS IN. Each entry is ONE coherent trip: a flight route
+// (origin -> destiny on departureDate) plus the destination city for the hotel. A journey
+// always draws its flight AND hotel from the SAME entry, so they stay coherent.
+//   origin, destiny, departureDate -> GET /search/flights
+//   city, departureDate (as check-in) -> GET /search/hotels
+// departureDate: 'YYYY-MM-DD' (leave off / '' to default to today + 30 days).
+// Only entries with seeded inventory belong here; the scripts don't validate, they use it.
+// Example: { origin: 'BCN', destiny: 'SFO', city: 'San Francisco', departureDate: '2026-08-15' }
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+const ROUTES = [
+  { origin: 'BOM', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-10-10' },
+  { origin: 'WAW', destiny: 'KUL', city: 'Kuala Lumpur', departureDate: '2026-09-23' },
+  { origin: 'BOS', destiny: 'LGA', city: 'New York', departureDate: '2026-07-27' },
+  { origin: 'MCO', destiny: 'MTY', city: 'Monterrey', departureDate: '2026-12-10' },
+  { origin: 'GRU', destiny: 'BSB', city: 'Brasilia', departureDate: '2026-11-07' },
+  { origin: 'FRA', destiny: 'PHX', city: 'Phoenix', departureDate: '2026-10-02' },
+  { origin: 'DEN', destiny: 'ADD', city: 'Addis Ababa', departureDate: '2026-12-28' },
+  { origin: 'AUH', destiny: 'AMS', city: 'Amsterdam', departureDate: '2026-08-15' },
+  { origin: 'YEG', destiny: 'MTY', city: 'Monterrey', departureDate: '2026-10-24' },
+  { origin: 'CPH', destiny: 'MUC', city: 'Munich', departureDate: '2026-10-06' },
+  { origin: 'MIA', destiny: 'SFO', city: 'San Francisco', departureDate: '2026-10-20' },
+  { origin: 'LGA', destiny: 'PER', city: 'Perth', departureDate: '2026-12-22' },
+  { origin: 'AUH', destiny: 'AUS', city: 'Austin', departureDate: '2026-09-16' },
+  { origin: 'BCN', destiny: 'SFO', city: 'San Francisco', departureDate: '2026-08-24' },
+  { origin: 'PVG', destiny: 'ORY', city: 'Paris', departureDate: '2026-08-30' },
+  { origin: 'AUS', destiny: 'LGW', city: 'London', departureDate: '2026-11-07' },
+  { origin: 'CDG', destiny: 'MAN', city: 'Manchester', departureDate: '2026-07-21' },
+  { origin: 'PVG', destiny: 'CPH', city: 'Copenhagen', departureDate: '2026-09-30' },
+  { origin: 'PVG', destiny: 'MSP', city: 'Minneapolis', departureDate: '2026-07-25' },
+  { origin: 'MSP', destiny: 'PER', city: 'Perth', departureDate: '2026-12-02' },
+  { origin: 'ARN', destiny: 'ZRH', city: 'Zurich', departureDate: '2026-12-03' },
+  { origin: 'SEA', destiny: 'DEN', city: 'Denver', departureDate: '2026-12-25' },
+  { origin: 'CUN', destiny: 'PHL', city: 'Philadelphia', departureDate: '2026-10-22' },
+  { origin: 'AKL', destiny: 'DFW', city: 'Dallas', departureDate: '2026-10-30' },
+  { origin: 'FCO', destiny: 'CAI', city: 'Cairo', departureDate: '2026-10-29' },
+  { origin: 'SCL', destiny: 'IQT', city: 'Iquitos', departureDate: '2026-12-15' },
+  { origin: 'FCO', destiny: 'NRT', city: 'Tokyo', departureDate: '2026-09-15' },
+  { origin: 'SJD', destiny: 'HNL', city: 'Honolulu', departureDate: '2026-10-18' },
+  { origin: 'GRU', destiny: 'SCL', city: 'Santiago', departureDate: '2026-11-19' },
+  { origin: 'LIS', destiny: 'EDI', city: 'Edinburgh', departureDate: '2026-08-22' },
+  { origin: 'WAW', destiny: 'ATL', city: 'Atlanta', departureDate: '2026-11-14' },
+  { origin: 'NRT', destiny: 'MAN', city: 'Manchester', departureDate: '2026-10-05' },
+  { origin: 'TIJ', destiny: 'YVR', city: 'Vancouver', departureDate: '2026-12-06' },
+  { origin: 'GVA', destiny: 'ARN', city: 'Stockholm', departureDate: '2026-11-18' },
+  { origin: 'CDG', destiny: 'MDE', city: 'Medellín', departureDate: '2026-08-24' },
+  { origin: 'MEL', destiny: 'LGA', city: 'New York', departureDate: '2026-08-09' },
+  { origin: 'CAN', destiny: 'PVG', city: 'Shanghai', departureDate: '2026-08-30' },
+  { origin: 'VIE', destiny: 'PVG', city: 'Shanghai', departureDate: '2026-11-15' },
+  { origin: 'HEL', destiny: 'DUB', city: 'Dublin', departureDate: '2026-09-11' },
+  { origin: 'BRU', destiny: 'NBO', city: 'Nairobi', departureDate: '2026-10-09' },
+  { origin: 'ADD', destiny: 'GDL', city: 'Guadalajara', departureDate: '2026-08-06' },
+  { origin: 'LAX', destiny: 'PHX', city: 'Phoenix', departureDate: '2026-11-23' },
+  { origin: 'BNE', destiny: 'DTW', city: 'Detroit', departureDate: '2026-10-19' },
+  { origin: 'BRU', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-11-08' },
+  { origin: 'WAW', destiny: 'ATH', city: 'Athens', departureDate: '2026-10-03' },
+  { origin: 'ORD', destiny: 'DEL', city: 'New Delhi', departureDate: '2026-10-20' },
+  { origin: 'MEX', destiny: 'LHR', city: 'London', departureDate: '2026-09-18' },
+  { origin: 'IST', destiny: 'IAH', city: 'Houston', departureDate: '2026-08-15' },
+  { origin: 'DTW', destiny: 'JFK', city: 'New York', departureDate: '2026-07-31' },
+  { origin: 'AMS', destiny: 'MIA', city: 'Miami', departureDate: '2026-09-02' },
+  { origin: 'HEL', destiny: 'VIE', city: 'Vienna', departureDate: '2026-09-09' },
+  { origin: 'MCO', destiny: 'PHL', city: 'Philadelphia', departureDate: '2026-08-02' },
+  { origin: 'GRU', destiny: 'IPC', city: 'Easter Island', departureDate: '2026-08-02' },
+  { origin: 'IST', destiny: 'BKK', city: 'Bangkok', departureDate: '2026-09-10' },
+  { origin: 'IST', destiny: 'GDL', city: 'Guadalajara', departureDate: '2026-11-05' },
+  { origin: 'IAD', destiny: 'YYZ', city: 'Toronto', departureDate: '2026-09-26' },
+  { origin: 'ATH', destiny: 'DUB', city: 'Dublin', departureDate: '2027-01-02' },
+  { origin: 'CLT', destiny: 'MSP', city: 'Minneapolis', departureDate: '2026-12-26' },
+  // { origin: 'LGA', destiny: 'MEX', city: 'Mexico City', departureDate: '2026-08-03' },
+  // { origin: 'YUL', destiny: 'HND', city: 'Tokyo', departureDate: '2026-12-08' },
+  // { origin: 'BOS', destiny: 'CLT', city: 'Charlotte', departureDate: '2026-12-31' },
+  // { origin: 'LAS', destiny: 'ADD', city: 'Addis Ababa', departureDate: '2026-10-22' },
+  // { origin: 'MIA', destiny: 'DOH', city: 'Doha', departureDate: '2026-09-19' },
+  // { origin: 'CGK', destiny: 'DEL', city: 'New Delhi', departureDate: '2026-07-25' },
+  // { origin: 'MVD', destiny: 'BSB', city: 'Brasilia', departureDate: '2026-11-22' },
+  // { origin: 'PTY', destiny: 'CTG', city: 'Cartagena', departureDate: '2026-12-25' },
+  // { origin: 'DFW', destiny: 'ZRH', city: 'Zurich', departureDate: '2026-08-28' },
+  // { origin: 'TPA', destiny: 'MEX', city: 'Mexico City', departureDate: '2026-07-26' },
+  // { origin: 'RUH', destiny: 'BCN', city: 'Barcelona', departureDate: '2026-12-15' },
+  // { origin: 'ORD', destiny: 'NRT', city: 'Tokyo', departureDate: '2026-11-12' },
+  // { origin: 'ORD', destiny: 'BCN', city: 'Barcelona', departureDate: '2026-08-28' },
+  // { origin: 'YUL', destiny: 'DFW', city: 'Dallas', departureDate: '2026-08-13' },
+  // { origin: 'AEP', destiny: 'TRU', city: 'Trujillo', departureDate: '2026-08-09' },
+  // { origin: 'MCO', destiny: 'SAN', city: 'San Diego', departureDate: '2026-08-15' },
+  // { origin: 'BCN', destiny: 'GRU', city: 'Sao Paulo', departureDate: '2026-11-29' },
+  // { origin: 'DEN', destiny: 'MEX', city: 'Mexico City', departureDate: '2026-11-29' },
+  // { origin: 'SLC', destiny: 'SJD', city: 'San José del Cabo', departureDate: '2026-08-24' },
+  // { origin: 'VIE', destiny: 'GVA', city: 'Geneva', departureDate: '2026-11-29' },
+  // { origin: 'PRG', destiny: 'CDG', city: 'Paris', departureDate: '2026-10-10' },
+  // { origin: 'BOG', destiny: 'DXB', city: 'Dubai', departureDate: '2026-11-11' },
+  // { origin: 'SJD', destiny: 'LAS', city: 'Las Vegas', departureDate: '2026-12-08' },
+  // { origin: 'LIM', destiny: 'IPC', city: 'Easter Island', departureDate: '2026-08-29' },
+  // { origin: 'MUC', destiny: 'SGN', city: 'Ho Chi Minh City', departureDate: '2026-10-22' },
+  // { origin: 'SAN', destiny: 'FRA', city: 'Frankfurt', departureDate: '2026-11-19' },
+  // { origin: 'IPC', destiny: 'SCL', city: 'Santiago', departureDate: '2026-08-10' },
+  // { origin: 'WAW', destiny: 'DEN', city: 'Denver', departureDate: '2026-08-26' },
+  // { origin: 'DFW', destiny: 'TPA', city: 'Tampa', departureDate: '2026-09-24' },
+  // { origin: 'DEN', destiny: 'HNL', city: 'Honolulu', departureDate: '2026-10-26' },
+  // { origin: 'IQT', destiny: 'DXB', city: 'Dubai', departureDate: '2026-12-27' },
+  // { origin: 'ZRH', destiny: 'EZE', city: 'Buenos Aires', departureDate: '2026-12-30' },
+  // { origin: 'MAD', destiny: 'WAW', city: 'Warsaw', departureDate: '2026-11-21' },
+  // { origin: 'MAD', destiny: 'UIO', city: 'Quito', departureDate: '2026-07-26' },
+  // { origin: 'GDL', destiny: 'IAH', city: 'Houston', departureDate: '2026-12-03' },
+  // { origin: 'PTY', destiny: 'IPC', city: 'Easter Island', departureDate: '2026-11-09' },
+  // { origin: 'YEG', destiny: 'AUS', city: 'Austin', departureDate: '2026-12-05' },
+  // { origin: 'IST', destiny: 'HND', city: 'Tokyo', departureDate: '2026-12-17' },
+  // { origin: 'EWR', destiny: 'GIG', city: 'Rio de Janeiro', departureDate: '2026-09-15' },
+  // { origin: 'BNE', destiny: 'IST', city: 'Istanbul', departureDate: '2026-10-26' },
+  // { origin: 'NRT', destiny: 'HKG', city: 'Hong Kong', departureDate: '2026-09-05' },
+  // { origin: 'PRG', destiny: 'HAN', city: 'Hanoi', departureDate: '2026-09-19' },
+  // { origin: 'BOS', destiny: 'AUS', city: 'Austin', departureDate: '2026-09-21' },
+  // { origin: 'CDG', destiny: 'BSB', city: 'Brasilia', departureDate: '2026-09-02' },
+  // { origin: 'COR', destiny: 'MAD', city: 'Madrid', departureDate: '2026-08-17' },
+  // { origin: 'CAN', destiny: 'MNL', city: 'Manila', departureDate: '2026-10-13' },
+  // { origin: 'HKG', destiny: 'MNL', city: 'Manila', departureDate: '2026-12-03' },
+  // { origin: 'MAD', destiny: 'SGN', city: 'Ho Chi Minh City', departureDate: '2026-11-24' },
+  // { origin: 'CAI', destiny: 'IAD', city: 'Washington', departureDate: '2026-08-31' },
+  // { origin: 'TIJ', destiny: 'PHX', city: 'Phoenix', departureDate: '2026-08-17' },
+  // { origin: 'DXB', destiny: 'VIE', city: 'Vienna', departureDate: '2026-07-18' },
+  // { origin: 'DFW', destiny: 'WAW', city: 'Warsaw', departureDate: '2026-12-10' },
+  // { origin: 'DUB', destiny: 'LGA', city: 'New York', departureDate: '2026-11-03' },
+  // { origin: 'DOH', destiny: 'MVD', city: 'Montevideo', departureDate: '2026-10-01' },
+  // { origin: 'ATH', destiny: 'SGN', city: 'Ho Chi Minh City', departureDate: '2026-12-24' },
+  // { origin: 'WAW', destiny: 'IST', city: 'Istanbul', departureDate: '2026-09-25' },
+  // { origin: 'SFO', destiny: 'EZE', city: 'Buenos Aires', departureDate: '2026-07-23' },
+  // { origin: 'ARN', destiny: 'VIE', city: 'Vienna', departureDate: '2026-11-13' },
+  // { origin: 'CAI', destiny: 'BCN', city: 'Barcelona', departureDate: '2026-10-12' },
+  // { origin: 'TPE', destiny: 'CAN', city: 'Guangzhou', departureDate: '2026-08-22' },
+  // { origin: 'ATH', destiny: 'LGW', city: 'London', departureDate: '2026-07-30' },
+  // { origin: 'ATH', destiny: 'SGN', city: 'Ho Chi Minh City', departureDate: '2026-12-11' },
+  // { origin: 'AQP', destiny: 'PTY', city: 'Panama City', departureDate: '2026-11-13' },
+  // { origin: 'TPA', destiny: 'CLT', city: 'Charlotte', departureDate: '2026-11-26' },
+  // { origin: 'SJD', destiny: 'IAH', city: 'Houston', departureDate: '2027-01-02' },
+  // { origin: 'MNL', destiny: 'IST', city: 'Istanbul', departureDate: '2026-10-27' },
+  // { origin: 'GDL', destiny: 'SJD', city: 'San José del Cabo', departureDate: '2026-09-10' },
+  // { origin: 'VIE', destiny: 'LHR', city: 'London', departureDate: '2026-10-08' },
+  // { origin: 'IAH', destiny: 'BOM', city: 'Mumbai', departureDate: '2026-09-19' },
+  // { origin: 'PTY', destiny: 'ORD', city: 'Chicago', departureDate: '2026-10-16' },
+  // { origin: 'LAX', destiny: 'IAD', city: 'Washington', departureDate: '2026-10-23' },
+  // { origin: 'CHC', destiny: 'CGK', city: 'Jakarta', departureDate: '2026-12-05' },
+  // { origin: 'AUH', destiny: 'BOM', city: 'Mumbai', departureDate: '2026-10-24' },
+  // { origin: 'GVA', destiny: 'DUB', city: 'Dublin', departureDate: '2027-01-01' },
+  // { origin: 'HAN', destiny: 'MEL', city: 'Melbourne', departureDate: '2026-10-16' },
+  // { origin: 'FCO', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-08-23' },
+  // { origin: 'SIN', destiny: 'PTY', city: 'Panama City', departureDate: '2026-08-05' },
+  // { origin: 'GRU', destiny: 'MVD', city: 'Montevideo', departureDate: '2026-11-16' },
+  // { origin: 'WAW', destiny: 'HKG', city: 'Hong Kong', departureDate: '2026-10-02' },
+  // { origin: 'MIA', destiny: 'CUN', city: 'Cancún', departureDate: '2026-11-14' },
+  // { origin: 'AUS', destiny: 'ADD', city: 'Addis Ababa', departureDate: '2026-12-07' },
+  // { origin: 'PVG', destiny: 'HAN', city: 'Hanoi', departureDate: '2026-11-28' },
+  // { origin: 'ICN', destiny: 'ZRH', city: 'Zurich', departureDate: '2026-09-06' },
+  // { origin: 'DOH', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-10-04' },
+  // { origin: 'LHR', destiny: 'TRU', city: 'Trujillo', departureDate: '2026-12-28' },
+  // { origin: 'LGA', destiny: 'YVR', city: 'Vancouver', departureDate: '2026-12-23' },
+  // { origin: 'LHR', destiny: 'PTY', city: 'Panama City', departureDate: '2026-12-01' },
+  // { origin: 'PTY', destiny: 'YVR', city: 'Vancouver', departureDate: '2026-08-28' },
+  // { origin: 'OSL', destiny: 'CPH', city: 'Copenhagen', departureDate: '2026-10-04' },
+  // { origin: 'AKL', destiny: 'BKK', city: 'Bangkok', departureDate: '2026-09-08' },
+  // { origin: 'SIN', destiny: 'SYD', city: 'Sydney', departureDate: '2026-09-06' },
+  // { origin: 'SIN', destiny: 'HKG', city: 'Hong Kong', departureDate: '2026-11-10' },
+  // { origin: 'CTG', destiny: 'DXB', city: 'Dubai', departureDate: '2026-09-07' },
+  // { origin: 'PVG', destiny: 'CDG', city: 'Paris', departureDate: '2026-10-24' },
+  // { origin: 'CCS', destiny: 'GDL', city: 'Guadalajara', departureDate: '2026-12-25' },
+  // { origin: 'IAD', destiny: 'DTW', city: 'Detroit', departureDate: '2026-12-29' },
+  // { origin: 'BSB', destiny: 'SCL', city: 'Santiago', departureDate: '2026-09-23' },
+  // { origin: 'TIJ', destiny: 'IAD', city: 'Washington', departureDate: '2026-10-01' },
+  // { origin: 'SYD', destiny: 'DEN', city: 'Denver', departureDate: '2026-10-26' },
+  // { origin: 'YUL', destiny: 'AMS', city: 'Amsterdam', departureDate: '2026-08-12' },
+  // { origin: 'SGN', destiny: 'PER', city: 'Perth', departureDate: '2026-12-08' },
+  // { origin: 'WAW', destiny: 'ATH', city: 'Athens', departureDate: '2026-09-10' },
+  // { origin: 'BOM', destiny: 'HKG', city: 'Hong Kong', departureDate: '2026-08-20' },
+  // { origin: 'LGW', destiny: 'TPE', city: 'Taipei', departureDate: '2026-10-03' },
+  // { origin: 'TPE', destiny: 'BOM', city: 'Mumbai', departureDate: '2026-09-10' },
+  // { origin: 'LAS', destiny: 'MNL', city: 'Manila', departureDate: '2026-08-28' },
+  // { origin: 'ATH', destiny: 'EDI', city: 'Edinburgh', departureDate: '2026-12-28' },
+  // { origin: 'IAH', destiny: 'MTY', city: 'Monterrey', departureDate: '2026-12-25' },
+  // { origin: 'HKG', destiny: 'SEA', city: 'Seattle', departureDate: '2026-10-27' },
+  // { origin: 'WAW', destiny: 'HNL', city: 'Honolulu', departureDate: '2026-10-18' },
+  // { origin: 'AUH', destiny: 'KUL', city: 'Kuala Lumpur', departureDate: '2026-10-25' },
+  // { origin: 'FRA', destiny: 'PEK', city: 'Beijing', departureDate: '2026-09-14' },
+  // { origin: 'BKK', destiny: 'PER', city: 'Perth', departureDate: '2026-12-10' },
+  // { origin: 'TPE', destiny: 'IAD', city: 'Washington', departureDate: '2026-07-28' },
+  // { origin: 'IAD', destiny: 'AMS', city: 'Amsterdam', departureDate: '2026-12-10' },
+  // { origin: 'PIU', destiny: 'AMS', city: 'Amsterdam', departureDate: '2026-12-30' },
+  // { origin: 'DXB', destiny: 'PVG', city: 'Shanghai', departureDate: '2026-09-21' },
+  // { origin: 'IAD', destiny: 'MDE', city: 'Medellín', departureDate: '2026-08-17' },
+  // { origin: 'HAN', destiny: 'ATH', city: 'Athens', departureDate: '2026-09-17' },
+  // { origin: 'KUL', destiny: 'DEL', city: 'New Delhi', departureDate: '2026-10-29' },
+  // { origin: 'CGK', destiny: 'SYD', city: 'Sydney', departureDate: '2026-10-14' },
+  // { origin: 'LGW', destiny: 'ARN', city: 'Stockholm', departureDate: '2026-12-14' },
+  // { origin: 'FCO', destiny: 'LAS', city: 'Las Vegas', departureDate: '2026-09-30' },
+  // { origin: 'SIN', destiny: 'DUB', city: 'Dublin', departureDate: '2026-10-16' },
+  // { origin: 'DUB', destiny: 'TIJ', city: 'Tijuana', departureDate: '2026-09-16' },
+  // { origin: 'IAH', destiny: 'YYC', city: 'Calgary', departureDate: '2026-08-19' },
+  // { origin: 'ADD', destiny: 'HNL', city: 'Honolulu', departureDate: '2026-09-16' },
+  // { origin: 'TPA', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-12-21' },
+  // { origin: 'ADD', destiny: 'PEK', city: 'Beijing', departureDate: '2026-09-20' },
+  // { origin: 'GIG', destiny: 'GDL', city: 'Guadalajara', departureDate: '2026-10-11' },
+  // { origin: 'KUL', destiny: 'CAN', city: 'Guangzhou', departureDate: '2026-08-06' },
+  // { origin: 'KUL', destiny: 'CGK', city: 'Jakarta', departureDate: '2026-11-16' },
+  // { origin: 'ARN', destiny: 'TPA', city: 'Tampa', departureDate: '2026-08-05' },
+  // { origin: 'CLT', destiny: 'MIA', city: 'Miami', departureDate: '2026-08-06' },
+  // { origin: 'LAS', destiny: 'YVR', city: 'Vancouver', departureDate: '2026-10-15' },
+  // { origin: 'AQP', destiny: 'MEL', city: 'Melbourne', departureDate: '2026-12-25' },
+  // { origin: 'ARN', destiny: 'KUL', city: 'Kuala Lumpur', departureDate: '2026-10-18' },
+  // { origin: 'UIO', destiny: 'PRG', city: 'Prague', departureDate: '2026-08-18' },
+  // { origin: 'ICN', destiny: 'CGK', city: 'Jakarta', departureDate: '2026-10-14' },
+  // { origin: 'DUB', destiny: 'PVG', city: 'Shanghai', departureDate: '2026-12-15' },
+  // { origin: 'DTW', destiny: 'PTY', city: 'Panama City', departureDate: '2026-12-25' },
+  // { origin: 'IST', destiny: 'BOM', city: 'Mumbai', departureDate: '2026-12-12' },
+  // { origin: 'SLC', destiny: 'DFW', city: 'Dallas', departureDate: '2026-07-26' },
+  // { origin: 'AKL', destiny: 'IAH', city: 'Houston', departureDate: '2026-12-28' },
+  // { origin: 'ORD', destiny: 'TPE', city: 'Taipei', departureDate: '2026-07-20' },
+  // { origin: 'ORY', destiny: 'WAW', city: 'Warsaw', departureDate: '2026-12-10' },
+  // { origin: 'OSL', destiny: 'BRU', city: 'Brussels', departureDate: '2026-12-30' },
+  // { origin: 'PTY', destiny: 'BSB', city: 'Brasilia', departureDate: '2026-08-03' },
+  // { origin: 'DXB', destiny: 'SFO', city: 'San Francisco', departureDate: '2026-08-12' },
+  // { origin: 'CDG', destiny: 'EDI', city: 'Edinburgh', departureDate: '2026-11-30' },
+  // { origin: 'AUH', destiny: 'BOM', city: 'Mumbai', departureDate: '2026-09-24' },
+  // { origin: 'AEP', destiny: 'CLT', city: 'Charlotte', departureDate: '2026-07-29' },
+  // { origin: 'SLC', destiny: 'YYC', city: 'Calgary', departureDate: '2026-11-18' },
+  // { origin: 'JED', destiny: 'WAW', city: 'Warsaw', departureDate: '2026-12-19' },
+  // { origin: 'LAX', destiny: 'YOW', city: 'Ottawa', departureDate: '2026-07-24' },
+  // { origin: 'ORD', destiny: 'VIE', city: 'Vienna', departureDate: '2026-11-22' },
+  // { origin: 'SIN', destiny: 'AUH', city: 'Abu Dhabi', departureDate: '2027-01-01' },
+  // { origin: 'KUL', destiny: 'HAN', city: 'Hanoi', departureDate: '2026-12-09' },
+  // { origin: 'DTW', destiny: 'KUL', city: 'Kuala Lumpur', departureDate: '2026-09-19' },
+  // { origin: 'TIJ', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-11-14' },
+  // { origin: 'CPH', destiny: 'SIN', city: 'Singapore', departureDate: '2026-09-28' },
+  // { origin: 'KUL', destiny: 'ARN', city: 'Stockholm', departureDate: '2026-10-14' },
+  // { origin: 'MEX', destiny: 'DEN', city: 'Denver', departureDate: '2026-12-10' },
+  // { origin: 'TPE', destiny: 'SEA', city: 'Seattle', departureDate: '2026-09-16' },
+  // { origin: 'ARN', destiny: 'MUC', city: 'Munich', departureDate: '2026-10-15' },
+  // { origin: 'PHX', destiny: 'YYZ', city: 'Toronto', departureDate: '2026-09-03' },
+  // { origin: 'ARN', destiny: 'TPE', city: 'Taipei', departureDate: '2026-10-14' },
+  // { origin: 'MUC', destiny: 'SAN', city: 'San Diego', departureDate: '2026-10-23' },
+  // { origin: 'MEX', destiny: 'LAX', city: 'Los Angeles', departureDate: '2026-08-01' },
+  // { origin: 'MSP', destiny: 'MEL', city: 'Melbourne', departureDate: '2026-08-20' },
+  // { origin: 'HNL', destiny: 'UIO', city: 'Quito', departureDate: '2026-08-30' },
+  // { origin: 'EDI', destiny: 'FCO', city: 'Rome', departureDate: '2026-12-30' },
+  // { origin: 'YOW', destiny: 'JFK', city: 'New York', departureDate: '2026-07-20' },
+  // { origin: 'BSB', destiny: 'GYE', city: 'Guayaquil', departureDate: '2026-12-26' },
+  // { origin: 'HNL', destiny: 'AEP', city: 'Buenos Aires', departureDate: '2026-10-31' },
+  // { origin: 'ZRH', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-07-19' },
+  // { origin: 'FRA', destiny: 'BCN', city: 'Barcelona', departureDate: '2026-12-06' },
+  // { origin: 'ASU', destiny: 'MCO', city: 'Orlando', departureDate: '2026-08-17' },
+  // { origin: 'SEA', destiny: 'FRA', city: 'Frankfurt', departureDate: '2026-12-05' },
+  // { origin: 'EDI', destiny: 'PEK', city: 'Beijing', departureDate: '2026-10-18' },
+  // { origin: 'SCL', destiny: 'LPB', city: 'La Paz', departureDate: '2026-09-06' },
+  // { origin: 'SJD', destiny: 'MNL', city: 'Manila', departureDate: '2026-12-25' },
+  // { origin: 'SIN', destiny: 'PEK', city: 'Beijing', departureDate: '2026-08-22' },
+  // { origin: 'CPH', destiny: 'HND', city: 'Tokyo', departureDate: '2026-11-13' },
+  // { origin: 'ATL', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-11-02' },
+  // { origin: 'NRT', destiny: 'KUL', city: 'Kuala Lumpur', departureDate: '2026-11-27' },
+  // { origin: 'DUB', destiny: 'VIE', city: 'Vienna', departureDate: '2026-10-24' },
+  // { origin: 'WAW', destiny: 'CLT', city: 'Charlotte', departureDate: '2026-09-29' },
+  // { origin: 'FCO', destiny: 'IST', city: 'Istanbul', departureDate: '2026-11-20' },
+  // { origin: 'BCN', destiny: 'IST', city: 'Istanbul', departureDate: '2026-08-16' },
+  // { origin: 'SAN', destiny: 'CPH', city: 'Copenhagen', departureDate: '2026-09-02' },
+  // { origin: 'CPH', destiny: 'LAX', city: 'Los Angeles', departureDate: '2026-12-06' },
+  // { origin: 'YUL', destiny: 'PTY', city: 'Panama City', departureDate: '2026-09-25' },
+  // { origin: 'GDL', destiny: 'ADD', city: 'Addis Ababa', departureDate: '2026-12-02' },
+  // { origin: 'CUZ', destiny: 'SCL', city: 'Santiago', departureDate: '2026-08-08' },
+  // { origin: 'PTY', destiny: 'GYE', city: 'Guayaquil', departureDate: '2026-11-13' },
+  // { origin: 'ICN', destiny: 'SIN', city: 'Singapore', departureDate: '2026-10-17' },
+  // { origin: 'DOH', destiny: 'DTW', city: 'Detroit', departureDate: '2026-12-05' },
+  // { origin: 'DTW', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-12-28' },
+  // { origin: 'TPE', destiny: 'IAD', city: 'Washington', departureDate: '2026-07-20' },
+  // { origin: 'LIS', destiny: 'CAI', city: 'Cairo', departureDate: '2026-09-07' },
+  // { origin: 'EZE', destiny: 'MTY', city: 'Monterrey', departureDate: '2026-08-21' },
+  // { origin: 'CPH', destiny: 'YVR', city: 'Vancouver', departureDate: '2026-12-10' },
+  // { origin: 'FRA', destiny: 'HKG', city: 'Hong Kong', departureDate: '2026-11-25' },
+  // { origin: 'TIJ', destiny: 'DUB', city: 'Dublin', departureDate: '2026-09-09' },
+  // { origin: 'MIA', destiny: 'CCS', city: 'Caracas', departureDate: '2026-07-19' },
+  // { origin: 'AKL', destiny: 'HKG', city: 'Hong Kong', departureDate: '2026-10-28' },
+  // { origin: 'IAD', destiny: 'SEA', city: 'Seattle', departureDate: '2026-09-07' },
+  // { origin: 'YYC', destiny: 'LAS', city: 'Las Vegas', departureDate: '2026-08-23' },
+  // { origin: 'IAH', destiny: 'TPE', city: 'Taipei', departureDate: '2026-07-23' },
+  // { origin: 'BOS', destiny: 'SGN', city: 'Ho Chi Minh City', departureDate: '2026-09-01' },
+  // { origin: 'CLT', destiny: 'TIJ', city: 'Tijuana', departureDate: '2026-09-29' },
+  // { origin: 'PTY', destiny: 'BCN', city: 'Barcelona', departureDate: '2026-09-12' },
+  // { origin: 'BRU', destiny: 'MTY', city: 'Monterrey', departureDate: '2026-11-10' },
+  // { origin: 'MEL', destiny: 'HND', city: 'Tokyo', departureDate: '2026-11-04' },
+  // { origin: 'MNL', destiny: 'YOW', city: 'Ottawa', departureDate: '2026-08-27' },
+  // { origin: 'ARN', destiny: 'ATH', city: 'Athens', departureDate: '2026-08-30' },
+  // { origin: 'MEX', destiny: 'MNL', city: 'Manila', departureDate: '2026-11-25' },
+  // { origin: 'LAS', destiny: 'DUB', city: 'Dublin', departureDate: '2026-10-30' },
+  // { origin: 'DXB', destiny: 'AUS', city: 'Austin', departureDate: '2026-08-12' },
+  // { origin: 'PIU', destiny: 'TPP', city: 'Tarapoto', departureDate: '2026-11-24' },
+  // { origin: 'PEK', destiny: 'PHL', city: 'Philadelphia', departureDate: '2026-11-02' },
+  // { origin: 'GVA', destiny: 'ARN', city: 'Stockholm', departureDate: '2026-10-04' },
+  // { origin: 'ORY', destiny: 'ZRH', city: 'Zurich', departureDate: '2026-10-11' },
+  // { origin: 'ATH', destiny: 'HEL', city: 'Helsinki', departureDate: '2026-11-28' },
+  // { origin: 'MIA', destiny: 'PIU', city: 'Piura', departureDate: '2026-09-20' },
+  // { origin: 'PTY', destiny: 'PIU', city: 'Piura', departureDate: '2026-10-17' },
+  // { origin: 'MAD', destiny: 'LGA', city: 'New York', departureDate: '2026-09-13' },
+  // { origin: 'MUC', destiny: 'PHL', city: 'Philadelphia', departureDate: '2026-08-18' },
+  // { origin: 'PVG', destiny: 'KUL', city: 'Kuala Lumpur', departureDate: '2026-10-08' },
+  // { origin: 'MCO', destiny: 'PHX', city: 'Phoenix', departureDate: '2026-10-16' },
+  // { origin: 'PRG', destiny: 'FRA', city: 'Frankfurt', departureDate: '2026-11-29' },
+  // { origin: 'SYD', destiny: 'CGK', city: 'Jakarta', departureDate: '2026-09-07' },
+  // { origin: 'ORY', destiny: 'BKK', city: 'Bangkok', departureDate: '2026-11-14' },
+  // { origin: 'HKG', destiny: 'DEN', city: 'Denver', departureDate: '2026-11-25' },
+  // { origin: 'YOW', destiny: 'BRU', city: 'Brussels', departureDate: '2026-11-24' },
+  // { origin: 'WAW', destiny: 'SEA', city: 'Seattle', departureDate: '2026-10-18' },
+  // { origin: 'CAN', destiny: 'IAH', city: 'Houston', departureDate: '2026-10-28' },
+  // { origin: 'MNL', destiny: 'PHX', city: 'Phoenix', departureDate: '2026-12-03' },
+  // { origin: 'DFW', destiny: 'SIN', city: 'Singapore', departureDate: '2026-10-22' },
+  // { origin: 'PEK', destiny: 'CPH', city: 'Copenhagen', departureDate: '2026-09-29' },
+  // { origin: 'PEK', destiny: 'WAW', city: 'Warsaw', departureDate: '2026-09-29' },
+  // { origin: 'PTY', destiny: 'MNL', city: 'Manila', departureDate: '2026-10-29' },
+  // { origin: 'AMS', destiny: 'YYC', city: 'Calgary', departureDate: '2026-11-20' },
+  // { origin: 'MSP', destiny: 'SFO', city: 'San Francisco', departureDate: '2026-08-24' },
+  // { origin: 'ATL', destiny: 'HNL', city: 'Honolulu', departureDate: '2026-11-09' },
+  // { origin: 'CGK', destiny: 'PER', city: 'Perth', departureDate: '2026-09-16' },
+  // { origin: 'IST', destiny: 'CTG', city: 'Cartagena', departureDate: '2026-10-01' },
+  // { origin: 'AMS', destiny: 'EZE', city: 'Buenos Aires', departureDate: '2026-09-27' },
+  // { origin: 'PTY', destiny: 'CDG', city: 'Paris', departureDate: '2026-07-18' },
+  // { origin: 'GYE', destiny: 'BCN', city: 'Barcelona', departureDate: '2026-11-21' },
+  // { origin: 'CLT', destiny: 'BOS', city: 'Boston', departureDate: '2026-08-21' },
+  // { origin: 'TPP', destiny: 'IPC', city: 'Easter Island', departureDate: '2026-10-05' },
+  // { origin: 'YUL', destiny: 'AKL', city: 'Auckland', departureDate: '2026-08-20' },
+  // { origin: 'LGW', destiny: 'DOH', city: 'Doha', departureDate: '2026-09-07' },
+  // { origin: 'KUL', destiny: 'EDI', city: 'Edinburgh', departureDate: '2026-12-30' },
+  // { origin: 'ASU', destiny: 'IAD', city: 'Washington', departureDate: '2026-09-11' },
+  // { origin: 'IST', destiny: 'YVR', city: 'Vancouver', departureDate: '2026-11-20' },
+  // { origin: 'HND', destiny: 'YEG', city: 'Edmonton', departureDate: '2026-09-30' },
+  // { origin: 'BSB', destiny: 'PTY', city: 'Panama City', departureDate: '2026-08-08' },
+  // { origin: 'IAH', destiny: 'PHX', city: 'Phoenix', departureDate: '2026-08-21' },
+  // { origin: 'FRA', destiny: 'PRG', city: 'Prague', departureDate: '2026-08-26' },
+  // { origin: 'ORD', destiny: 'SIN', city: 'Singapore', departureDate: '2026-09-06' },
+  // { origin: 'MTY', destiny: 'HND', city: 'Tokyo', departureDate: '2026-10-03' },
+  // { origin: 'CLT', destiny: 'BCN', city: 'Barcelona', departureDate: '2026-11-23' },
+  // { origin: 'MXP', destiny: 'ORY', city: 'Paris', departureDate: '2026-11-21' },
+  // { origin: 'LAX', destiny: 'CAN', city: 'Guangzhou', departureDate: '2026-11-22' },
+  // { origin: 'TPA', destiny: 'BOM', city: 'Mumbai', departureDate: '2026-10-17' },
+  // { origin: 'LGA', destiny: 'OSL', city: 'Oslo', departureDate: '2026-07-31' },
+  // { origin: 'BOS', destiny: 'CUN', city: 'Cancún', departureDate: '2026-09-08' },
+  // { origin: 'IAD', destiny: 'SEA', city: 'Seattle', departureDate: '2026-08-12' },
+  // { origin: 'ATH', destiny: 'MUC', city: 'Munich', departureDate: '2026-11-18' },
+  // { origin: 'MXP', destiny: 'HND', city: 'Tokyo', departureDate: '2026-09-07' },
+  // { origin: 'HEL', destiny: 'SFO', city: 'San Francisco', departureDate: '2026-11-14' },
+  // { origin: 'DUB', destiny: 'DEN', city: 'Denver', departureDate: '2026-10-12' },
+  // { origin: 'HKG', destiny: 'CLT', city: 'Charlotte', departureDate: '2026-10-22' },
+  // { origin: 'ATL', destiny: 'PTY', city: 'Panama City', departureDate: '2026-12-02' },
+  // { origin: 'SIN', destiny: 'AKL', city: 'Auckland', departureDate: '2026-11-11' },
+  // { origin: 'MIA', destiny: 'JED', city: 'Jeddah', departureDate: '2026-08-19' },
+  // { origin: 'HNL', destiny: 'AUH', city: 'Abu Dhabi', departureDate: '2026-12-13' },
+  // { origin: 'EWR', destiny: 'MSP', city: 'Minneapolis', departureDate: '2026-10-17' },
+  // { origin: 'HEL', destiny: 'EZE', city: 'Buenos Aires', departureDate: '2026-08-29' },
+  // { origin: 'AUS', destiny: 'AMS', city: 'Amsterdam', departureDate: '2026-08-16' },
+  // { origin: 'GYE', destiny: 'FCO', city: 'Rome', departureDate: '2026-07-29' },
+  // { origin: 'IPC', destiny: 'TPP', city: 'Tarapoto', departureDate: '2026-08-19' },
+  // { origin: 'AUS', destiny: 'SLC', city: 'Salt Lake City', departureDate: '2026-09-03' },
+  // { origin: 'SYD', destiny: 'JFK', city: 'New York', departureDate: '2026-11-22' }
+];
+
+
+
+export const CONFIG = {
+  // Edge — the NGINX ingress in front of atlas-apps. All service APIs live under /api/v1.
+  // Default is the current LoadBalancer IP; override with ATLAS_GATEWAY for another cluster.
+  gateway: env('ATLAS_GATEWAY', 'http://<gateway-ip>'),
+
+  // Keycloak issuer base (no trailing slash). Token endpoint is derived from realm below.
+  keycloakUrl: env('KEYCLOAK_URL', 'http://keycloak.<gateway-ip>.nip.io'),
+  realm: env('KEYCLOAK_REALM', 'atlas'),
+
+  // OAuth2 Resource Owner Password Credentials against a dedicated confidential test client.
+  // The USER is chosen per-VU from the load-test pool (see `loadtest` below), so each VU has
+  // its own travel-cart. Only the client credentials live here; the username is derived.
+  auth: {
+    clientId: env('KEYCLOAK_CLIENT_ID', 'atlas-loadtest'),
+    clientSecret: env('KEYCLOAK_CLIENT_SECRET', ''), // required at runtime (requireEnv in auth.js)
+    scope: env('KEYCLOAK_SCOPE', 'openid'),
+  },
+
+  // Pool of test users (loadtest-1..N), provisioned by scripts/seed-loadtest-users.sh. Each
+  // k6 VU authenticates as `${userPrefix}${__VU}` so concurrent VUs never share a cart. The
+  // pool size caps concurrency: the harness ties MAX_VUS to userCount (see load.js).
+  loadtest: {
+    userPrefix: env('LOADTEST_USER_PREFIX', 'loadtest-'),
+    userCount: parseInt(env('LOADTEST_USER_COUNT', '200'), 10),
+    password: env('LOADTEST_USER_PASSWORD', ''),     // required at runtime (requireEnv in auth.js)
+  },
+
+  // What each iteration books: 'flight' (flight only), 'hotel' (hotel only), or 'both'
+  // (a flight + a hotel in one cart/booking). One scenario per run — set SCENARIO and
+  // compare runs. See README.
+  scenario: env('SCENARIO', 'flight').toLowerCase(),
+
+  // Discovery inputs. `routes` is the curated table hardcoded above — it MUST point at
+  // routes/cities that HAVE seeded inventory. You own and validate it; the scripts do zero
+  // validation and just fan out over it. Discovery fails loudly in setup() if a scenario's
+  // list yields no in-stock results. The rest are query knobs (env-overridable).
+  search: {
+    routes: ROUTES,                                   // dates come per-route (departureDate)
+    adults: parseInt(env('SEARCH_ADULTS', '1'), 10),
+    rooms: parseInt(env('SEARCH_ROOMS', '1'), 10),
+    guests: parseInt(env('SEARCH_GUESTS', '2'), 10),
+    nights: parseInt(env('SEARCH_NIGHTS', '2'), 10),  // hotel stay; checkOut = departureDate + nights
+    pageSize: parseInt(env('SEARCH_PAGE_SIZE', '50'), 10),
+  },
+
+  // Experiment 02 (inventory contention). Unlike `search.routes` — which SPREADS load so
+  // inventory is never the bottleneck — this pins every VU onto ONE scarce resource so their
+  // bookings collide on a single pessimistically-locked inventory row. Point it at a target
+  // route/date that exposes exactly ONE in-stock resource (seed it that way), or set
+  // CONTENTION_RESOURCE_ID to disambiguate when several exist. Capacity C is NOT set here — it
+  // is read back live from the inventory API in setup(), so the maths never drifts from truth.
+  contention: {
+    origin: env('CONTENTION_ORIGIN', ''),
+    destiny: env('CONTENTION_DESTINY', ''),
+    city: env('CONTENTION_CITY', ''),
+    departureDate: env('CONTENTION_DATE', ''),
+    resourceId: env('CONTENTION_RESOURCE_ID', ''),  // optional exact filter (flightId / roomTypeId)
+    quantity: parseInt(env('Q', '1'), 10),          // units per booking (q) — seats or rooms
+  },
+};
+
+// Convenience: fully-qualified API base (…/api/v1).
+export const API = `${CONFIG.gateway}/api/v1`;
+
+// Keycloak token endpoint for the configured realm.
+export const TOKEN_URL =
+  `${CONFIG.keycloakUrl}/realms/${CONFIG.realm}/protocol/openid-connect/token`;

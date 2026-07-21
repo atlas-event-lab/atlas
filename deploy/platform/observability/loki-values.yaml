@@ -1,0 +1,46 @@
+# Helm values for Grafana Loki (single-binary, lab profile). Phase 6b.
+# Install:
+#   helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
+#   helm upgrade --install loki grafana/loki -n atlas-observability -f loki-values.yaml
+#
+# NOTE: the grafana/loki chart is version-sensitive. After install, verify the query
+# service name (used by the Grafana datasource + Alloy):  kubectl get svc -n atlas-observability | grep loki
+# (single-binary usually exposes `loki` and a `loki-gateway`).
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false                 # single-tenant lab
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index: { prefix: index_, period: 24h }
+  storage:
+    type: filesystem
+  limits_config:
+    retention_period: 168h            # 7 days
+    volume_enabled: true
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    storageClass: oci-bv              # verify: kubectl get storageclass
+    size: 10Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+
+# Disable the scalable-mode components and heavy extras (lab).
+read:     { replicas: 0 }
+write:    { replicas: 0 }
+backend:  { replicas: 0 }
+chunksCache:  { enabled: false }
+resultsCache: { enabled: false }
+lokiCanary:   { enabled: false }
+test:         { enabled: false }

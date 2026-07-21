@@ -1,0 +1,17 @@
+# Realm import. The full realm (clients, roles, users) is YOURS — export it from the
+# temporary VM and paste it under spec.realm. Do NOT invent clients/roles here (SDD).
+#   Export:  /opt/keycloak/bin/kc.sh export --realm atlas --file atlas-realm.json
+# Then inline that JSON (as YAML) under spec.realm below, or use spec.realm.* fields.
+#
+# Skeleton only — replace spec.realm with your exported realm definition:
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: atlas-realm
+  namespace: atlas-system
+spec:
+  keycloakCRName: keycloak
+  realm:
+    realm: atlas
+    enabled: true
+    # <<< paste your exported realm here: clients, roles, scopes, etc. >>>

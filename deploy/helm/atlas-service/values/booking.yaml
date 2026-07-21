@@ -1,0 +1,37 @@
+# booking-service — Saga hot-path service: HA (anti-affinity + HPA min 2).
+# Deploy:  helm upgrade --install booking-service ../atlas-service -f booking.yaml -n atlas-apps
+
+image:
+  repository: ghcr.io/atlas-event-lab/atlas-booking-service
+  tag: ""                      # set by CI to the git-sha / release tag
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+podAntiAffinity:
+  enabled: true
+
+config:
+  KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
+  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/booking_db
+  FLIGHT_SERVICE_URL: http://flight-service:8080
+  HOTEL_SERVICE_URL: http://hotel-service:8080
+  REDIS_HOST: redis.atlas-data
+  REDIS_PORT: "6379"
+
+envSecret:
+  enabled: true
+  name: booking-secret          # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
+
+# Public Keycloak issuer (the `iss` browser-login JWTs carry; validated by this service).
+# Injected from the `atlas-issuer` Secret so the public host/IP is NOT committed. The Secret
+# is a per-cluster prerequisite — see DEPLOYMENT-RUNBOOK.md § "App secret — atlas-issuer".
+extraEnv:
+  - name: KEYCLOAK_ISSUER_URI
+    valueFrom:
+      secretKeyRef:
+        name: atlas-issuer
+        key: KEYCLOAK_ISSUER_URI

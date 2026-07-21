@@ -1,0 +1,42 @@
+# Edge routing: NGINX Ingress -> services in atlas-apps (Phase 5).
+# Ports standardized to 8080. Services carry the /api/v1 prefix in their controllers, so
+# NO rewrite is needed — the full path is forwarded as-is (roadmap §1.1).
+# ingress-nginx matches the LONGEST prefix, so /api/v1/me/bookings wins over /api/v1/me.
+# Host-less: matches any host (use the LoadBalancer's public IP). Add host + TLS later.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: atlas-api
+  namespace: atlas-apps
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api/v1/me/bookings          # booking history (CQRS) — before /api/v1/me
+            pathType: Prefix
+            backend: { service: { name: search-service, port: { number: 8080 } } }
+          - path: /api/v1/me                    # profile, preferences, favorites
+            pathType: Prefix
+            backend: { service: { name: user-service, port: { number: 8080 } } }
+          - path: /api/v1/search
+            pathType: Prefix
+            backend: { service: { name: search-service, port: { number: 8080 } } }
+          - path: /api/v1/bookings
+            pathType: Prefix
+            backend: { service: { name: booking-service, port: { number: 8080 } } }
+          - path: /api/v1/flights
+            pathType: Prefix
+            backend: { service: { name: flight-service, port: { number: 8080 } } }
+          - path: /api/v1/hotels
+            pathType: Prefix
+            backend: { service: { name: hotel-service, port: { number: 8080 } } }
+          - path: /api/v1/inventory
+            pathType: Prefix
+            backend: { service: { name: inventory-service, port: { number: 8080 } } }
+          - path: /api/v1/payments
+            pathType: Prefix
+            backend: { service: { name: payment-service, port: { number: 8080 } } }
+          - path: /api/v1/carts
+            pathType: Prefix
+            backend: { service: { name: travel-cart-service, port: { number: 8080 } } }

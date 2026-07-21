@@ -1,0 +1,11 @@
+# Secrets — never commit a filled-in env file.
+.env
+
+# k6 run artifacts.
+summary.json
+*.k6.json
+results/
+k6-batch.log
+
+# run logs (may contain IPs/tokens)
+*.log

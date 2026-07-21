@@ -1,0 +1,40 @@
+# Ingress for Kafka UI — a stable URL instead of `kubectl port-forward`, which drops
+# long-lived connections (broken pipe) and makes the UI feel like it "disconnects".
+# nip.io needs no DNS: kafka.<LB-IP>.nip.io resolves to <LB-IP>. Replace the IP if it changes.
+#
+# SECURITY: Kafka UI has NO auth of its own and can browse messages (and, with dynamic
+# config, manage topics). Exposing it on a public host without a gate is unsafe, so this
+# Ingress enforces HTTP basic auth. Create the credentials secret BEFORE applying, or nginx
+# will return 503 for this host:
+#   htpasswd -c auth <username>                         # prompts for a password, writes ./auth
+#   kubectl -n atlas-data create secret generic kafka-ui-basic-auth --from-file=auth
+#   rm auth
+#
+# Apply:  kubectl apply -f deploy/platform/kafka/kafka-ui-ingress.yaml
+# Access: http://kafka.<cluster-ip>.nip.io   (no port-forward needed)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kafka-ui
+  namespace: atlas-data
+  annotations:
+    # Keep long-lived streams (Kafka UI polls/streams in the background) from timing out.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Gate the UI behind HTTP basic auth (secret 'kafka-ui-basic-auth', key 'auth').
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: kafka-ui-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Atlas Kafka UI"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: kafka.<cluster-ip>.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kafka-ui
+                port:
+                  number: 8080

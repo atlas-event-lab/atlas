@@ -1,0 +1,47 @@
+# Scoped deploy identity for CI push-deploy (Phase 5 CD).
+# A ServiceAccount limited to atlas-apps — its token is what CI uses to run `helm upgrade`.
+# A leak only compromises this one namespace (roadmap §5). Apply:  kubectl apply -f deployer-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployer
+  namespace: atlas-apps
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployer
+  namespace: atlas-apps
+rules:
+  # Workloads the atlas-service chart manages
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "serviceaccounts", "pods"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Prometheus Operator PodMonitor rendered by the chart when metrics.enabled=true (Phase 6a)
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["podmonitors"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Helm stores release state as Secrets in the namespace
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployer
+  namespace: atlas-apps
+subjects:
+  - kind: ServiceAccount
+    name: deployer
+    namespace: atlas-apps
+roleRef:
+  kind: Role
+  name: deployer
+  apiGroup: rbac.authorization.k8s.io

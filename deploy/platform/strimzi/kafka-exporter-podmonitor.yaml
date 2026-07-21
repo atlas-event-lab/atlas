@@ -1,0 +1,45 @@
+# Scrape the Strimzi Kafka Exporter (consumer-group lag) into Prometheus.
+# Requires spec.kafkaExporter enabled on the Kafka CR (kafka.yaml). The exporter pod carries
+# strimzi.io/kind=Kafka and exposes the 'tcp-prometheus' port; kube-prometheus-stack picks
+# this PodMonitor up (podMonitorSelectorNilUsesHelmValues: false), same as the CNPG one.
+#
+# The relabelings mirror Strimzi's official example so the strimzi.io/* pod labels and
+# namespace/pod names land on the series — which the Strimzi Grafana dashboards expect.
+#
+# Apply:  kubectl apply -f deploy/platform/strimzi/kafka-exporter-podmonitor.yaml
+# Verify: in Prometheus/Grafana Explore -> kafka_consumergroup_lag{consumergroup="inventory-service"}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kafka-resources-metrics
+  namespace: atlas-data
+  labels:
+    app: strimzi
+    app.kubernetes.io/part-of: atlas-platform
+spec:
+  selector:
+    matchExpressions:
+      - { key: strimzi.io/kind, operator: In, values: ["Kafka"] }
+  podMetricsEndpoints:
+    - path: /metrics
+      port: tcp-prometheus
+      relabelings:
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(strimzi_io_.+)
+          separator: ;
+          replacement: $1
+        - action: replace
+          sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+          regex: (.*)
+          replacement: $1
+        - action: replace
+          sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: kubernetes_pod_name
+          regex: (.*)
+          replacement: $1
+        - action: replace
+          sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node_name
+          regex: (.*)
+          replacement: $1

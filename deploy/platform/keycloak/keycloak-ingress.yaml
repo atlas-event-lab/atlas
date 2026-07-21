@@ -1,0 +1,22 @@
+# Ingress for Keycloak — exposes it at a public nip.io host so the admin console works in
+# the browser and the token issuer is a real resolvable URL. nip.io needs no DNS setup:
+# keycloak.<LB-IP>.nip.io resolves to <LB-IP>. Replace the IP if the LB IP changes.
+# Apply:  kubectl apply -f keycloak-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  namespace: atlas-system
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: keycloak.<cluster-ip>.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak-service
+                port:
+                  number: 8080

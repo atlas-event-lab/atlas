@@ -1,0 +1,331 @@
+# KafkaTopic CRs — names from each service's EventTopics.java (code is the source of truth).
+# metadata.name is the real topic name (dots are valid k8s object names). The only exception
+# is payment.timed_out — underscores are invalid in object names, so it uses a sanitized
+# metadata.name + an explicit spec.topicName carrying the real name.
+# partitions=3 (parallel consumers for HPA experiments; inventory.reserved raised to 6 — §3).
+# replicas=3 (RF=3 across the 3 brokers). Raising replicas on EXISTING topics needs Cruise
+# Control to reassign (payment-service-scaling.md §7.5); it is not applied by editing alone.
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: booking.created
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  # 6 -> 9 (ADR-0016 / consumer-capacity-scaling.md): inventory saga = 3 pods x concurrency 3 = 9
+  # consumers. Producer (booking OutboxRelay) keys by bookingId → per-booking order kept.
+  partitions: 9
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: booking.confirmed
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  # 6 -> 9 (ADR-0016 / consumer-capacity-scaling.md): matches inventory 3 pods x concurrency 3 = 9.
+  # Producer keys by bookingId → per-booking order preserved across the added partitions.
+  partitions: 9
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: booking.cancelled
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: booking.failed
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: booking.expired
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: flight.created
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: flight.updated
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: flight.deleted
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: hotel.created
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: hotel.updated
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: hotel.deleted
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.reserved
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  # 6 -> 12 (ADR-0016 / consumer-capacity-scaling.md): payment = 4 pods x concurrency 3 = 12
+  # consumers. Producer keys by bookingId → per-booking order preserved. NOTE: inventory.reserved
+  # is consumed by BOTH payment and booking, each with per-consumer retry/DLT topics (ADR-0023 /
+  # ADR-0024): @RetryableTopic auto-creates inventory.reserved-payment-retry-0..2 + -payment.dlq
+  # and inventory.reserved-booking-retry-0..2 + -booking.dlq; confirm/raise their partition count
+  # to match so retries don't serialize on fewer partitions (ADR-0015 §3).
+  # Partition counts can only be raised, never lowered.
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.rejected
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.released
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.flight.reserved
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.flight.released
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.flight.expired
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.hotel.reserved
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.hotel.released
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: inventory.hotel.expired
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment.requested
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment.succeeded
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment.failed
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment.timed-out
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  topicName: payment.timed_out
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: "604800000"

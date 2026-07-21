@@ -1,0 +1,27 @@
+# KafkaRebalance — spread partitions across the 3 brokers after scaling the node pool 1 -> 3
+# (Experiment 01, payment-service-scaling.md §7.5). Requires Cruise Control enabled on the
+# Kafka CR (spec.cruiseControl) and the node pool already at replicas: 3.
+#
+# Two distinct concerns, both served by Cruise Control:
+#   1) RF change of EXISTING topics (1 -> 3): driven by raising spec.replicas on the KafkaTopic
+#      CRs (topics.yaml). The (unidirectional) Topic Operator uses Cruise Control to add the
+#      replicas. Verify your Strimzi version applies replica changes; if not, run a manual
+#      kafka-reassign-partitions (see the runbook).
+#   2) Load balancing across the new brokers: the `full` rebalance below.
+#
+# Apply, then approve:
+#   kubectl apply -f deploy/platform/strimzi/kafka-rebalance.yaml
+#   # wait for status ProposalReady, then approve:
+#   kubectl -n atlas-data annotate kafkarebalance atlas-rebalance-full \
+#     strimzi.io/rebalance=approve
+#   kubectl -n atlas-data get kafkarebalance atlas-rebalance-full -w   # -> Ready
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaRebalance
+metadata:
+  name: atlas-rebalance-full
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  mode: full

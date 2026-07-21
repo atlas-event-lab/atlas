@@ -1,0 +1,54 @@
+# Helm values for Grafana Alloy (log collector DaemonSet). Phase 6b.
+# Alloy is Grafana's current agent (successor to Promtail). Discovers pods and forwards
+# their stdout to Loki via the Kubernetes API (no host log-path mounts needed).
+# Install:  helm upgrade --install alloy grafana/alloy -n atlas-observability -f alloy-values.yaml
+#
+# NOTE: Alloy config syntax (River) uses NEWLINE-separated arguments — never ';' on one line.
+alloy:
+  configMap:
+    content: |-
+      // Discover all pods in the cluster
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Keep useful labels (namespace, pod, container, app)
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+      }
+
+      // Tail container logs via the Kubernetes API
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.default.receiver]
+      }
+
+      // Ship to Loki through its gateway (confirmed service: loki-gateway)
+      loki.write "default" {
+        endpoint {
+          url = "http://loki-gateway.atlas-observability.svc/loki/api/v1/push"
+        }
+      }
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 256Mi }
+
+controller:
+  type: daemonset

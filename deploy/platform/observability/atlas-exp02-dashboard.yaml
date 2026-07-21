@@ -1,0 +1,188 @@
+# Grafana dashboard — Atlas Experiment 02: Inventory Contention (no-oversell).
+# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label grafana_dashboard: "1").
+#
+# Feeds off the custom Micrometer meters added to inventory-service (ADR-0018):
+#   atlas_inventory_reservations_total{result="reserved|rejected"}
+#   atlas_inventory_oversell_attempts_total          (MUST stay 0 — the invariant)
+#   atlas_inventory_units_total{action="reserved|released"}
+# plus Kafka consumer lag (kafka_consumergroup_lag) and, when k6 is run with
+# `-o experimental-prometheus-rw`, the load generator's own metrics (k6_*).
+#
+# Apply:  kubectl apply -f atlas-exp02-dashboard.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-exp02-dashboard
+  namespace: atlas-observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Atlas"
+data:
+  atlas-exp02-dashboard.json: |
+    {
+      "uid": "atlas-exp02-contention",
+      "title": "Atlas — Experiment 02: Inventory Contention",
+      "tags": ["atlas", "experiment", "correctness", "inventory"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "5s",
+      "time": { "from": "now-15m", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          },
+          {
+            "name": "topic",
+            "type": "textbox",
+            "label": "Saga topic",
+            "query": "booking.created",
+            "current": { "text": "booking.created", "value": "booking.created" },
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Oversell attempts (MUST be 0)",
+          "description": "atlas_inventory_oversell_attempts_total — increments only if inventory's defensive reserve() guard trips, i.e. the no-oversell invariant broke. Any non-zero value is a FAIL.",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum(atlas_inventory_oversell_attempts_total)", "refId": "A" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              },
+              "color": { "mode": "thresholds" },
+              "mappings": [{ "type": "value", "options": { "0": { "text": "0 ✓" } } }]
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Reserved (winners, this range)",
+          "description": "sum(increase(atlas_inventory_reservations_total{result=reserved})) — bookings that won a reservation. Should equal floor(capacity/q).",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum(increase(atlas_inventory_reservations_total{result=\"reserved\"}[$__range]))", "refId": "A" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "fixed", "fixedColor": "green" },
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Rejected (losers, this range)",
+          "description": "sum(increase(atlas_inventory_reservations_total{result=rejected})) — bookings cleanly rejected (no stock). The contention losers.",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum(increase(atlas_inventory_reservations_total{result=\"rejected\"}[$__range]))", "refId": "A" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "fixed", "fixedColor": "orange" },
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          }
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Reservation outcomes /s (reserved vs rejected)",
+          "description": "rate of atlas_inventory_reservations_total by result. Under a burst: rejected spikes once stock is exhausted.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum by (result) (rate(atlas_inventory_reservations_total[$__rate_interval]))", "legendFormat": "{{result}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "none" } }, "unit": "reqps" } }
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Units /s (seats·rooms reserved vs released)",
+          "description": "rate of atlas_inventory_units_total by action. Released rising during a run means winners are being freed (payment failing/timing out) — for the pure invariant test, keep payment always-approve so released stays ~0.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum by (action) (rate(atlas_inventory_units_total[$__rate_interval]))", "legendFormat": "{{action}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 }, "unit": "short" } }
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Inventory consumer lag — $topic",
+          "description": "kafka_consumergroup_lag for the saga topic. Should spike during the burst and DRAIN to ~0 after — proof the reservations were processed, not dropped.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum(kafka_consumergroup_lag{topic=\"$topic\"})", "legendFormat": "lag", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "short" } }
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "k6 load generator (requires -o experimental-prometheus-rw)",
+          "description": "The load side, when k6 remote-writes to Prometheus. k6_oversell must stay 0; k6_bookings_created counts accepted POST /bookings. Metric names may carry a _total suffix depending on the k6 version — adjust if the series are empty.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum(k6_bookings_created)", "legendFormat": "k6 bookings_created", "refId": "A" },
+            { "expr": "sum(k6_oversell)", "legendFormat": "k6 oversell (must be 0)", "refId": "B" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "short" } }
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Duplicate skips — idempotency (Experiment 03)",
+          "description": "atlas_inventory_events_skipped_total{reason=duplicate} by event. Rises when redelivered events are deduplicated (Exp 03 offset replay). During Exp 02 it should be flat.",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            { "expr": "sum by (event) (atlas_inventory_events_skipped_total{reason=\"duplicate\"})", "legendFormat": "{{event}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "short" } }
+        }
+      ]
+    }

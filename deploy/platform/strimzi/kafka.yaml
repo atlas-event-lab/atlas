@@ -1,0 +1,99 @@
+# Kafka (Strimzi, KRaft — no ZooKeeper). README Step 3.
+# Operator install first:
+#   helm repo add strimzi https://strimzi.io/charts && helm repo update
+#   helm upgrade --install strimzi strimzi/strimzi-kafka-operator -n atlas-data
+#
+# Bootstrap service produced: atlas-kafka-bootstrap.atlas-data:9092  (matches Helm values).
+# Multi-broker: 3 combined controller+broker nodes (KRaft quorum tolerating 1 loss), RF=3 /
+# ISR=2 so acks=all writes are truly durable (Experiment 01, payment-service-scaling.md §7).
+# Existing topics are reassigned to RF=3 via Cruise Control (see §7.5 + kafka-rebalance.yaml).
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: atlas-data
+  labels:
+    strimzi.io/cluster: atlas
+spec:
+  replicas: 3                  # 1 -> 3; Strimzi spreads them one per node (anti-affinity)
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 50Gi             # matches the live PVCs; Strimzi REJECTS shrinking storage, so this
+        class: oci-bv          # must equal the provisioned size. verify: kubectl get pvc -n atlas-data
+        deleteClaim: false
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: atlas
+  namespace: atlas-data
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    # Must be supported by the installed operator (this one: 4.2.0/4.2.1/4.3.0).
+    # metadataVersion omitted -> Strimzi defaults it to match the Kafka version.
+    version: 4.3.0
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    # Broker resources + heap fixed (payment-service-scaling.md §7.2): predictable Burstable QoS
+    # instead of the previous unbounded BestEffort. ~250 partition-replicas need little heap;
+    # 2Gi limit leaves ~1Gi above -Xmx for off-heap / page cache.
+    resources:
+      requests: { cpu: 250m, memory: 1.25Gi }
+      limits: { cpu: "1", memory: 2Gi }
+    jvmOptions:
+      -Xms: 1g
+      -Xmx: 1g
+    config:
+      # RF=3 / ISR=2 with acks=all (all producers) = writes survive losing 1 broker
+      # (payment-service-scaling.md §7). Requires the node pool at replicas: 3.
+      #
+      # ⚠️ END STATE. On a LIVE cluster do NOT apply this file in one shot: min.insync.replicas=2
+      # while existing topics are still RF=1 fails every acks=all produce (NotEnoughReplicas).
+      # Follow deploy/scripts/apply-payment-scaling.md — enable CC + reassign topics to RF=3
+      # FIRST, then raise ISR to 2 last.
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+    # Broker JMX metrics via the Prometheus JMX exporter (rules in kafka-metrics-configmap.yaml).
+    # Adds the 'tcp-prometheus' (9404) port on the broker pods; the existing
+    # kafka-exporter-podmonitor.yaml already scrapes strimzi.io/kind=Kafka pods on that port.
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: kafka-metrics-config.yml
+  entityOperator:
+    topicOperator: {}          # enables KafkaTopic CRs (topics.yaml)
+    userOperator: {}
+  # Cruise Control — required to reassign the existing topics to RF=3 across the 3 brokers
+  # and to rebalance load (payment-service-scaling.md §7.5; see kafka-rebalance.yaml). Chosen
+  # over recreating topics. Keep it small — node memory budget.
+  cruiseControl:
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits: { memory: 1Gi }
+  # Kafka Exporter — consumer-group lag + topic/offset metrics for Prometheus/Grafana
+  # (Phase 7: watch inventory-service / payment-service / booking-service lag under load).
+  # Exposes metrics on port 'tcp-prometheus'; scraped via kafka-exporter-podmonitor.yaml.
+  kafkaExporter:
+    topicRegex: ".*"           # export all topics
+    groupRegex: ".*"           # export all consumer groups (booking-service, inventory-service, …)
+    resources:                 # tiny footprint — mindful of the node memory budget
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 128Mi }

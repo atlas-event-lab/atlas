@@ -1,0 +1,53 @@
+# KEDA ScaledObject — scale the WireMock fake payment provider by PAYMENT'S OUTBOUND CALL RATE.
+#
+# Why (ADR-0017 / consumer-capacity-scaling.md): payment is scaled to up to 12 in-flight consumers
+# (ADR-0015), i.e. up to 12 concurrent provider calls. WireMock delays each response (~150 ms),
+# holding a Jetty thread ASLEEP — so it burns little CPU and a CPU HPA would under-scale while its
+# thread/connection pool saturates. We therefore scale on the provider REQUEST RATE that payment
+# emits (its Feign client metric, already scraped by kube-prometheus-stack), not on CPU.
+#
+# The metric is payment's Feign client, observed via Micrometer (CONFIRMED against Prometheus):
+#   http_client_requests_seconds_count{
+#     clientName="com.atlas.payment.client.PaymentProviderFeignClient",
+#     http_method="POST", http_url="/payments", job="atlas-apps/payment-service" }
+# NOTE: the label is `clientName` (camelCase) and its value is the FULL Feign client class name,
+# not "payment-provider". Only `threshold` remains to tune from the Experiment 01 re-run.
+#
+# Prereqs: KEDA installed (README-keda.md); kube-prometheus-stack in namespace atlas-observability
+# (its operator exposes the headless `prometheus-operated` service on :9090). The WireMock
+# Deployment omits `replicas` (deploy/platform/apps/wiremock.yaml) so this is the sole owner.
+#
+# Apply:  kubectl apply -f deploy/platform/keda/wiremock-scaledobject.yaml
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: wiremock
+  namespace: atlas-apps
+  labels:
+    app.kubernetes.io/name: wiremock
+    app.kubernetes.io/part-of: atlas
+spec:
+  scaleTargetRef:
+    name: wiremock                  # the WireMock Deployment
+  minReplicaCount: 1                # lean floor at rest — NOT 0: a cold start mid-ramp would time out
+  maxReplicaCount: 4               # sized for peak payment concurrency (12 in-flight); tune from re-run
+  cooldownPeriod: 120              # wait before scaling back after the trigger goes inactive
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0     # react promptly to the ramp
+        scaleDown:
+          stabilizationWindowSeconds: 180   # damp scale-down so it doesn't flap between bursts
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.atlas-observability:9090
+        metricName: payment_provider_request_rate
+        # Provider calls/sec that payment is issuing. desiredReplicas ~= ceil(query / threshold),
+        # capped by maxReplicaCount. threshold = target calls/sec PER wiremock pod.
+        query: |
+          sum(rate(http_client_requests_seconds_count{clientName="com.atlas.payment.client.PaymentProviderFeignClient"}[1m]))
+        threshold: "20"            # ~20 calls/s per pod → ~3 pods at 60/s, 4 at 80/s; tune from re-run
+        activationThreshold: "1"   # below ~1 call/s, scale to minReplicaCount (idle-down)

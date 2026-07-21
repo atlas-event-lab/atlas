@@ -1,0 +1,7 @@
+apiVersion: v2
+name: atlas-service
+description: Reusable chart for Atlas stateless Spring Boot microservices (1 chart, N values files).
+type: application
+version: 0.1.0
+# Default image tag; override per service/release with image.tag.
+appVersion: "0.0.1"

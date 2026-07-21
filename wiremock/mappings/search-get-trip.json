@@ -1,0 +1,43 @@
+{
+  "mappings": [
+    {
+      "name": "GET /api/v1/trips/{tripId} — fixed stub for local development",
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/api/v1/trips/.*"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "tripId": "{{request.pathSegments.[3]}}",
+          "items": [
+            {
+              "type": "FLIGHT",
+              "resourceId": "26266cf0-46b6-4255-ab3a-a47bde7ba241",
+              "price": {
+                "amount": 500.00,
+                "currency": "USD"
+              }
+            },
+            {
+              "type": "HOTEL",
+              "resourceId": "e2111111-1111-1111-1111-111111111111",
+              "price": {
+                "amount": 300.00,
+                "currency": "USD"
+              }
+            }
+          ],
+          "total": {
+            "amount": 800.00,
+            "currency": "USD"
+          }
+        },
+        "transformers": ["response-template"]
+      }
+    }
+  ]
+}

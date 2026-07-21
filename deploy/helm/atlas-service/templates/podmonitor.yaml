@@ -1,0 +1,19 @@
+{{- if .Values.metrics.enabled -}}
+# Prometheus Operator PodMonitor — scrapes /actuator/prometheus on the management port (9090).
+# Requires the Prometheus Operator CRDs (installed by kube-prometheus-stack). Keep
+# metrics.enabled=false until that stack is installed, then flip it on.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "atlas-service.fullname" . }}
+  labels:
+    {{- include "atlas-service.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "atlas-service.selectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: management          # named container port (9090)
+      path: {{ .Values.metrics.path }}
+      interval: 15s
+{{- end }}

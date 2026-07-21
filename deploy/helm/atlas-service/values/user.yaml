@@ -1,0 +1,23 @@
+# user-service — self-service profile, REST-only (no Kafka). Baseline: replica 1, no HPA.
+# Deploy:  helm upgrade --install user-service ../atlas-service -f user.yaml -n atlas-apps
+
+image:
+  repository: ghcr.io/atlas-event-lab/atlas-user-service
+  tag: ""
+
+config:
+  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/user_db
+
+envSecret:
+  enabled: true
+  name: user-secret              # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
+
+# Public Keycloak issuer (the `iss` browser-login JWTs carry; validated by this service).
+# Injected from the `atlas-issuer` Secret so the public host/IP is NOT committed. The Secret
+# is a per-cluster prerequisite — see DEPLOYMENT-RUNBOOK.md § "App secret — atlas-issuer".
+extraEnv:
+  - name: KEYCLOAK_ISSUER_URI
+    valueFrom:
+      secretKeyRef:
+        name: atlas-issuer
+        key: KEYCLOAK_ISSUER_URI

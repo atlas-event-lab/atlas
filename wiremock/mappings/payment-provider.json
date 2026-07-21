@@ -1,0 +1,63 @@
+{
+  "mappings": [
+    {
+      "name": "Fake Payment Provider — DECLINED (business failure, no retry)",
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/payments",
+        "headers": { "X-Payment-Scenario": { "equalTo": "DECLINED" } }
+      },
+      "response": {
+        "status": 402,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "status": "DECLINED", "reason": "Card declined by issuer" }
+      }
+    },
+    {
+      "name": "Fake Payment Provider — TEMPORARY_FAILURE (transient 503, retried)",
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/payments",
+        "headers": { "X-Payment-Scenario": { "equalTo": "TEMPORARY_FAILURE" } }
+      },
+      "response": {
+        "status": 503,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "status": "UNAVAILABLE", "reason": "Provider temporarily unavailable" }
+      }
+    },
+    {
+      "name": "Fake Payment Provider — TIMEOUT (delay exceeds the 5s client timeout, retried)",
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/payments",
+        "headers": { "X-Payment-Scenario": { "equalTo": "TIMEOUT" } }
+      },
+      "response": {
+        "status": 200,
+        "fixedDelayMilliseconds": 7000,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "status": "APPROVED", "transactionId": "{{randomValue type='UUID'}}" },
+        "transformers": ["response-template"]
+      }
+    },
+    {
+      "name": "Fake Payment Provider — SUCCESS (default, APPROVED, realistic latency)",
+      "priority": 10,
+      "request": {
+        "method": "POST",
+        "urlPath": "/payments"
+      },
+      "response": {
+        "status": 200,
+        "delayDistribution": { "type": "lognormal", "median": 150, "sigma": 0.4 },
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "status": "APPROVED", "transactionId": "{{randomValue type='UUID'}}" },
+        "transformers": ["response-template"]
+      }
+    }
+  ]
+}

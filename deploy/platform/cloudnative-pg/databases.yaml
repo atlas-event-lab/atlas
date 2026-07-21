@@ -1,0 +1,49 @@
+# One logical database per service, owned by its dedicated role (ARCH-002/ARCH-003).
+# Requires the CloudNativePG `Database` CRD (operator >= 1.24). Verify:
+#   kubectl get crd databases.postgresql.cnpg.io
+# Names match the Helm DB_URL values (…/booking_db, …/search_db, …).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: user-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: user_db, owner: user_user }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: flight-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: flight_db, owner: flight_user }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: hotel-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: hotel_db, owner: hotel_user }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: inventory-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: inventory_db, owner: inventory_user }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: travel-cart-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: travel_cart_db, owner: travel_cart_user }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: booking-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: booking_db, owner: booking_user }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: payment-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: payment_db, owner: payment_user }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: search-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: search_db, owner: search_user }
+---
+# Keycloak's own database (Keycloak runs in atlas-system but its DB lives here).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata: { name: keycloak-db, namespace: atlas-data }
+spec: { cluster: { name: atlas-pg }, name: keycloak_db, owner: keycloak_user }

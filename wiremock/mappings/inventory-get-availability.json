@@ -1,0 +1,26 @@
+{
+  "mappings": [
+    {
+      "name": "GET /api/v1/inventory/{resourceType}/{resourceId} — Inventory availability stub (capacity-shrink validation)",
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/api/v1/inventory/[A-Z]+/.*"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "resourceType": "{{request.pathSegments.[3]}}",
+          "resourceId": "{{request.pathSegments.[4]}}",
+          "totalCapacity": 180,
+          "reservedCount": 150,
+          "available": 30,
+          "status": "ACTIVE"
+        },
+        "transformers": ["response-template"]
+      }
+    }
+  ]
+}

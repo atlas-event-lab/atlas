@@ -1,0 +1,33 @@
+# search-service — CQRS read side. Higher traffic under experiments -> HPA enabled.
+# Deploy:  helm upgrade --install search-service ../atlas-service -f search.yaml -n atlas-apps
+
+image:
+  repository: ghcr.io/atlas-event-lab/atlas-search-service
+  tag: ""
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+podAntiAffinity:
+  enabled: false
+
+config:
+  KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
+  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/search_db
+
+envSecret:
+  enabled: true
+  name: search-secret           # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
+
+# Public Keycloak issuer (the `iss` browser-login JWTs carry; validated by this service).
+# Injected from the `atlas-issuer` Secret so the public host/IP is NOT committed. The Secret
+# is a per-cluster prerequisite — see DEPLOYMENT-RUNBOOK.md § "App secret — atlas-issuer".
+extraEnv:
+  - name: KEYCLOAK_ISSUER_URI
+    valueFrom:
+      secretKeyRef:
+        name: atlas-issuer
+        key: KEYCLOAK_ISSUER_URI

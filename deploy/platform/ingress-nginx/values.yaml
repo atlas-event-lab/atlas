@@ -1,0 +1,27 @@
+# Helm values for ingress-nginx on OKE.
+# Install:
+#   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+#   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+#     -n atlas-system -f values.yaml
+#
+# Exposes ONE OCI flexible LoadBalancer (single public IP) fronting the cluster.
+controller:
+  ingressClassResource:
+    name: nginx
+    enabled: true
+    default: true            # atlas Ingress objects omit ingressClassName and still match
+  replicaCount: 2            # HA edge
+  service:
+    type: LoadBalancer
+    annotations:
+      # OCI flexible LB shape (min/max Mbps). Adjust max as traffic grows.
+      oci.oraclecloud.com/load-balancer-type: "lb"
+      service.beta.kubernetes.io/oci-load-balancer-shape: "flexible"
+      service.beta.kubernetes.io/oci-load-balancer-shape-flex-min: "10"
+      service.beta.kubernetes.io/oci-load-balancer-shape-flex-max: "100"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  metrics:
+    enabled: false           # flip to true in Phase 6 (Prometheus scrape)

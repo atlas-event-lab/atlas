@@ -1,0 +1,39 @@
+# Grafana datasource for Tempo — auto-loaded by the kube-prometheus-stack Grafana sidecar.
+# Includes tracesToLogsV2 (span → Loki logs by traceId), and — for APM (Phase 7) — the
+# Service Graph and traces→metrics wired to Prometheus (uid 'prometheus', provisioned by
+# kube-prometheus-stack). Requires Tempo's metrics-generator to be on (tempo-values.yaml).
+# Apply:  kubectl apply -f tempo-datasource.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-datasource
+  namespace: atlas-observability
+  labels:
+    grafana_datasource: "1"
+data:
+  tempo-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        access: proxy
+        url: http://tempo.atlas-observability:3200
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: "-5m"
+            spanEndTimeShift: "5m"
+            filterByTraceID: true
+            tags: [{ key: "service.name", value: "app" }]
+          # Service Graph tab — reads traces_service_graph_* that Tempo's generator writes to Prometheus.
+          serviceMap:
+            datasourceUid: prometheus
+          # Node graph rendering for the service map.
+          nodeGraph:
+            enabled: true
+          # From a span, jump to its RED span-metrics (traces_spanmetrics_*) in Prometheus.
+          tracesToMetrics:
+            datasourceUid: prometheus
+            spanStartTimeShift: "-5m"
+            spanEndTimeShift: "5m"
