@@ -1,0 +1,991 @@
+# Grafana dashboard — Atlas Experiment 01: High Booking Concurrency (scalability).
+# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label grafana_dashboard: "1").
+#
+# Feeds off, in order of importance:
+#   atlas_booking_outcomes_total{state}          custom, booking-service — the REAL success rate
+#   atlas_booking_saga_duration_seconds_bucket   custom, booking-service — end-to-end Saga latency
+#   http_server_requests_seconds_*               Spring Boot actuator — the synchronous half
+#   kube_horizontalpodautoscaler_status_*        kube-state-metrics — does the HPA scale?
+#   container_cpu_usage_seconds_total            cAdvisor — CPU vs the HPA target
+#   cnpg_pgbouncer_pools_*, cnpg_backends_total  CNPG exporter — pooler + connection ceiling
+#   hikaricp_connections_*                       actuator — pool pressure from the app side
+#   kafka_consumergroup_lag                      Kafka exporter — does the backlog drain?
+#   k6_*                                         only when k6 runs with `-o experimental-prometheus-rw`
+#
+# The two atlas_booking_* meters are new (see experiments/01-high-booking-concurrency/
+# booking-observability.md). Everything else was already being scraped.
+#
+# Apply:  kubectl apply -f atlas-exp01-dashboard.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-exp01-dashboard
+  namespace: atlas-observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Atlas"
+data:
+  atlas-exp01-dashboard.json: |
+    {
+      "uid": "atlas-exp01-concurrency",
+      "title": "Atlas — Experiment 01: High Booking Concurrency",
+      "tags": [
+        "atlas",
+        "experiment",
+        "scalability",
+        "booking"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "The verdict — did it pass?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Saga success rate (server-side)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_booking_outcomes_total{state=\"CONFIRMED\"}[$__range])) / clamp_min(sum(increase(atlas_booking_outcomes_total[$__range])), 1)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.95
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.98
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Fraction of bookings that reached CONFIRMED, counted in booking-service when the Saga ends. This is NOT the 201 from POST /bookings: that 201 only says the Saga was kicked off. Experiment criterion: >= 98%.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Saga p95 end-to-end",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(atlas_booking_saga_duration_seconds_bucket[$__rate_interval])))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "blue"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Time from booking creation to its terminal state. This is the curve that stretches under load; the synchronous POST cannot see it because it only publishes an event.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Confirmed (this range)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_booking_outcomes_total{state=\"CONFIRMED\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "green"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 12,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Failed + expired (this range)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_booking_outcomes_total{state=~\"FAILED|EXPIRED\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 16,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "HTTP 5xx error rate",
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=~\"booking-service|inventory-service|payment-service\",status=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(http_server_requests_seconds_count{job=~\"booking-service|inventory-service|payment-service\"}[$__rate_interval])), 0.001)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.005
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.02
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Graceful degradation means latency, not errors. If this climbs, you went past the cliff rather than the knee.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          }
+        },
+        {
+          "type": "row",
+          "title": "Saga outcome — what the 201 does not tell you",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Outcomes /s by state",
+          "targets": [
+            {
+              "expr": "sum by (state) (rate(atlas_booking_outcomes_total[$__rate_interval]))",
+              "legendFormat": "{{state}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "CONFIRMED should dominate. If FAILED/EXPIRED grow during the hold, the degradation is not graceful.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Latency: synchronous POST vs full Saga",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(atlas_booking_saga_duration_seconds_bucket[$__rate_interval])))",
+              "legendFormat": "saga p95 (end-to-end)",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(atlas_booking_saga_duration_seconds_bucket[$__rate_interval])))",
+              "legendFormat": "saga p99",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"booking-service\",uri=~\".*bookings.*\"}[$__rate_interval])))",
+              "legendFormat": "POST /bookings p95 (synchronous)",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "s"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "THE panel of this experiment. The POST stays flat because it only starts the Saga; the gap between the two lines IS the asynchronous degradation.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          }
+        },
+        {
+          "type": "row",
+          "title": "Autoscaling — does the hot path scale?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "HPA replicas (current vs desired)",
+          "targets": [
+            {
+              "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=\"atlas-apps\"}",
+              "legendFormat": "{{horizontalpodautoscaler}} current",
+              "refId": "A"
+            },
+            {
+              "expr": "kube_horizontalpodautoscaler_status_desired_replicas{namespace=\"atlas-apps\"}",
+              "legendFormat": "{{horizontalpodautoscaler}} desired",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Should climb during the hold and settle after. Includes keda-hpa-payment-service, which scales on Kafka lag rather than CPU.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU per pod vs HPA target (~70%)",
+          "targets": [
+            {
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"atlas-apps\",pod=~\"(booking-service|inventory-service|payment-service).*\",container!=\"\"}[$__rate_interval])) / clamp_min(sum by (pod) (kube_pod_container_resource_requests{namespace=\"atlas-apps\",pod=~\"(booking-service|inventory-service|payment-service).*\",resource=\"cpu\"}), 0.001)",
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "percentunit"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Usage against the CPU request. The HPA triggers at ~70%.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 17
+          }
+        },
+        {
+          "type": "row",
+          "title": "Database — does the pooler keep connections bounded?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 25
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "PgBouncer — waiting clients",
+          "targets": [
+            {
+              "expr": "sum by (pool_mode) (cnpg_pgbouncer_pools_cl_waiting)",
+              "legendFormat": "cl_waiting {{pool_mode}}",
+              "refId": "A"
+            },
+            {
+              "expr": "max(cnpg_pgbouncer_pools_maxwait)",
+              "legendFormat": "maxwait (s)",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "cl_waiting near 0. If it climbs and maxwait follows, the pool is too small — the signal that motivated the pooler tuning.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 26
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Postgres connections vs max_connections",
+          "targets": [
+            {
+              "expr": "sum(cnpg_backends_total)",
+              "legendFormat": "backends",
+              "refId": "A"
+            },
+            {
+              "expr": "max(cnpg_pg_settings_setting{name=\"max_connections\"})",
+              "legendFormat": "max_connections",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Backends should stay well under the ceiling: that is the pooler doing its job.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 26
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "HikariCP — pool pressure from the app side",
+          "targets": [
+            {
+              "expr": "sum by (job) (hikaricp_connections_active{job=~\"booking-service|inventory-service|payment-service\"})",
+              "legendFormat": "{{job}} active",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (job) (hikaricp_connections_pending{job=~\"booking-service|inventory-service|payment-service\"})",
+              "legendFormat": "{{job}} pending",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "The other side of the pool: if pending > 0, app threads are waiting for a connection even when PgBouncer looks healthy.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 26
+          }
+        },
+        {
+          "type": "row",
+          "title": "Kafka — does the backlog drain?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 34
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Consumer lag by group",
+          "targets": [
+            {
+              "expr": "sum by (consumergroup) (kafka_consumergroup_lag{consumergroup=~\"booking-service|inventory-service|payment-service\"})",
+              "legendFormat": "{{consumergroup}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Should grow during the ramp and DRAIN to ~0 afterwards. Lag that never falls means the consumers cannot keep up with the producer.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 35
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Service replicas vs lag (correlation)",
+          "targets": [
+            {
+              "expr": "sum by (deployment) (kube_deployment_status_replicas{namespace=\"atlas-apps\",deployment=~\"booking-service|inventory-service|payment-service\"})",
+              "legendFormat": "{{deployment}} replicas",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Read against the panel on the left: replicas should respond to lag.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 35
+          }
+        },
+        {
+          "type": "row",
+          "title": "k6 load generator — requires PROM=1",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 43
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "k6 — requests /s and iterations /s",
+          "targets": [
+            {
+              "expr": "sum(rate(k6_http_reqs[$__rate_interval]))",
+              "legendFormat": "http_reqs/s",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(k6_iterations[$__rate_interval]))",
+              "legendFormat": "journeys/s",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Run with `make run EXP=01-high-booking-concurrency PROM=1` and the Prometheus port-forward. Without it these panels stay empty. The k6_* series names depend on the k6 version and on K6_PROMETHEUS_RW_TREND_STATS; the k6 summary remains the authoritative record of a run.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 44
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "k6 — journey p95 (client side)",
+          "targets": [
+            {
+              "expr": "k6_journey_duration_p95",
+              "legendFormat": "journey p95",
+              "refId": "A"
+            },
+            {
+              "expr": "k6_booking_create_duration_p95",
+              "legendFormat": "booking create p95",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "ms"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 44
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "k6 booking_success_rate (client) vs Saga (server)",
+          "targets": [
+            {
+              "expr": "k6_journey_success_rate_rate",
+              "legendFormat": "k6: journey completed (client)",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(atlas_booking_outcomes_total{state=\"CONFIRMED\"}[$__rate_interval])) / clamp_min(sum(rate(atlas_booking_outcomes_total[$__rate_interval])), 0.001)",
+              "legendFormat": "server: Saga confirmed",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "percentunit",
+              "max": 1
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "The two lines answer different questions and can diverge: k6 measures that the whole journey completed (gated by the weakest hop — cart, catalog, booking), the server measures that the Saga confirmed. Use k6_booking_accept_rate_rate instead if you want booking-service isolated from everything upstream.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 44
+          }
+        }
+      ]
+    }

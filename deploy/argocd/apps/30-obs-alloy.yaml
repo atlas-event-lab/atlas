@@ -1,0 +1,33 @@
+# Wave 3 — Grafana Alloy (log collector DaemonSet, ships stdout JSON to Loki). Multi-source:
+# grafana/alloy chart + git values. Release name `alloy`.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: obs-alloy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: atlas
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: alloy
+      targetRevision: 0.12.0
+      helm:
+        releaseName: alloy
+        valueFiles:
+          - $values/deploy/platform/observability/alloy-values.yaml
+    - repoURL: https://github.com/atlas-event-lab/hub.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

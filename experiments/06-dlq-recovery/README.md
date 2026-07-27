@@ -139,6 +139,20 @@ Env knobs (planned): `N` (batch journeys, default 20), `VUS` (parallel, default 
 
 ## What to watch (Grafana)
 
+A dedicated dashboard ships with this experiment: **Atlas — Experiment 06: DLQ Recovery**
+(`deploy/platform/observability/atlas-exp06-dashboard.yaml`). On the GitOps path it is installed at
+cluster bootstrap by the `obs-config` Application; otherwise apply it once:
+
+```bash
+kubectl apply -f deploy/platform/observability/atlas-exp06-dashboard.yaml
+kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80    # admin / atlas-admin
+```
+
+Look for the **time gap** in *Parked /s by reason*: poison parks instantly, retry-exhausted
+only appears minutes later after the 5s → 30s → 120s ladder. Seeing that separation is
+hypothesis 1. Then check the provider calls rise by exactly one charge per reprocessed booking
+during replay. The table below adds the rest.
+
 | Layer | Panel / query | Healthy signal |
 |-------|---------------|----------------|
 | DLQ backlog | `kafka_topic_partition_current_offset{topic="inventory.reserved-payment.dlq"}` (Kafka dashboard, "Backlog en DLQ por tópico") | rises by `POISON_N` + retry-exhausted count during faults; flat, then drained after replay |

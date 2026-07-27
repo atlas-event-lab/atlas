@@ -21,7 +21,7 @@ set -euo pipefail
 
 APPS_NS="atlas-apps"
 DATA_NS="atlas-data"
-CHART="atlas-gitops/charts/atlas-service"          # same chart CI deploys from
+CHART="deploy/helm/atlas-service"          # same chart CI deploys from
 POOLER_MANIFEST="deploy/platform/cloudnative-pg/pooler.yaml"
 SERVICES=("inventory-service" "search-service")
 DRY_RUN="${DRY_RUN:-0}"

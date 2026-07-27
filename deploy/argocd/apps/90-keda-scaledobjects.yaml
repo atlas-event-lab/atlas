@@ -1,0 +1,28 @@
+# Wave 9 — KEDA ScaledObjects (payment + wiremock, Kafka-lag driven). Last wave: they target the
+# service Deployments (wave 7) and the KEDA CRDs (wave 2 operator).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda-scaledobjects
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/keda
+    directory:
+      recurse: false
+      include: '*-scaledobject.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

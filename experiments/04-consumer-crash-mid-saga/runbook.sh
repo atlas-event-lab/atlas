@@ -18,7 +18,8 @@
 #   CONFIRM=yes N=100 VUS=10 ./runbook.sh
 #   CONFIRM=yes KILL_MODE=force-delete ./runbook.sh
 #
-# Env: N (50), VUS (5), KILL_AFTER (N/3), KILL_LAG (10 — standing lag required before the
+# Env: N (50), VUS (5), ROUTES_SAMPLE (30 — routes searched in k6 setup),
+#      KILL_AFTER (N/3), KILL_LAG (10 — standing lag required before the
 #      kill so messages are provably in flight; raise VUS if it never builds),
 #      KILL_MODE (exec|force-delete), SETTLE (360 — sized to cover the W2 recovery window:
 #      stale-after 3m + one sweep, ADR-0021), SCENARIO (passthrough to k6), DRY_RUN, CONFIRM.
@@ -39,6 +40,11 @@ PAYMENT_SELECTOR="app.kubernetes.io/name=payment-service"
 WIREMOCK_SVC="wiremock"
 
 N="${N:-50}"
+# Search only a SAMPLE of the ROUTES table in setup(). The full table costs one
+# search-service call per route per scenario side before a single journey runs —
+# breadth that Experiment 01 needs and this one does not: the batch can reach N=1000; 30 routes keeps ~33 journeys per route, far under a flight's capacity.
+# The sample is seeded (ROUTES_SEED in lib/k6/config.js), so runs stay comparable.
+ROUTES_SAMPLE="${ROUTES_SAMPLE:-30}"
 VUS="${VUS:-5}"
 KILL_AFTER="${KILL_AFTER:-$(( N / 3 > 0 ? N / 3 : 1 ))}"
 KILL_LAG="${KILL_LAG:-10}"
@@ -178,10 +184,10 @@ info "batch window starts at (db clock): $B_TS"
 say "1. Fire the batch — $N journeys, $VUS parallel (Exp 01 load.js, smoke mode)"
 K6_LOG="${SCRIPT_DIR}/k6-batch.log"
 if [[ "$DRY_RUN" == "1" ]]; then
-  info "[dry-run] k6 run -e ITERATIONS=$N -e VUS=$VUS $LOAD_JS  (> $K6_LOG)"
+  info "[dry-run] k6 run -e ROUTES_SAMPLE=$ROUTES_SAMPLE -e ITERATIONS=$N -e VUS=$VUS $LOAD_JS  (> $K6_LOG)"
 else
   ( cd "${SCRIPT_DIR}/../01-high-booking-concurrency" && \
-    k6 run -e ITERATIONS="$N" -e VUS="$VUS" load.js >"$K6_LOG" 2>&1 ) &
+    k6 run -e ROUTES_SAMPLE="$ROUTES_SAMPLE" -e ITERATIONS="$N" -e VUS="$VUS" load.js >"$K6_LOG" 2>&1 ) &
   K6_PID=$!
   info "k6 started (pid $K6_PID, log: $K6_LOG)"
 fi

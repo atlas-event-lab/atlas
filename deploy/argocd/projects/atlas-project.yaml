@@ -1,0 +1,52 @@
+# AppProject 'atlas' — the trust boundary for every Atlas Application. It whitelists the source
+# repos Argo may pull from (this repo + the upstream Helm/Git repos the platform charts live in),
+# the destination namespaces it may deploy into, and the cluster-scoped kinds it may manage
+# (CRDs, Namespaces, ClusterRoles, etc. — the operators need these).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: atlas
+  namespace: argocd
+  # Keep the project even if pruned by an errant app-of-apps reconcile.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Atlas event-lab platform — app-of-apps managed stack.
+  sourceRepos:
+    # This repo (the GitHub remote is named `hub`; the local folder is `atlas/`).
+    - https://github.com/atlas-event-lab/hub.git
+    # Upstream Helm chart repositories.
+    - https://kubernetes.github.io/ingress-nginx
+    - https://kubernetes-sigs.github.io/metrics-server/
+    - https://cloudnative-pg.github.io/charts
+    - https://strimzi.io/charts
+    - https://prometheus-community.github.io/helm-charts
+    - https://kedacore.github.io/charts
+    - https://grafana.github.io/helm-charts
+    # Keycloak operator release manifests (pinned to a tag in the app).
+    - https://github.com/keycloak/keycloak-k8s-resources.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: atlas-system
+    - server: https://kubernetes.default.svc
+      namespace: atlas-data
+    - server: https://kubernetes.default.svc
+      namespace: atlas-apps
+    - server: https://kubernetes.default.svc
+      namespace: atlas-observability
+    - server: https://kubernetes.default.svc
+      namespace: cnpg-system
+    - server: https://kubernetes.default.svc
+      namespace: keda
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+  # Operators ship CRDs, ClusterRoles, and Namespaces — allow all cluster-scoped kinds.
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  # Any namespaced kind is allowed inside the whitelisted destinations.
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

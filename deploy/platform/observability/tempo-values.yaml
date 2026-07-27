@@ -55,5 +55,5 @@ tempo:
 
 persistence:
   enabled: true
-  storageClassName: oci-bv            # verify: kubectl get storageclass
+  # storageClassName: <name>          # omitted → cluster's DEFAULT StorageClass. Set to pin one.
   size: 5Gi

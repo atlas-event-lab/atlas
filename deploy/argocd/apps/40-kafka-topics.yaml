@@ -1,0 +1,28 @@
+# Wave 4 — the 24 KafkaTopics + the kafka-exporter PodMonitor. Gated behind the wave-3 Kafka
+# cluster being Ready via custom health.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka-topics
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/strimzi
+    directory:
+      recurse: false
+      include: '{topics.yaml,kafka-exporter-podmonitor.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

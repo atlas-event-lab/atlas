@@ -30,7 +30,7 @@ singleBinary:
   replicas: 1
   persistence:
     enabled: true
-    storageClass: oci-bv              # verify: kubectl get storageclass
+    # storageClass: <name>            # omitted → cluster's DEFAULT StorageClass. Set to pin one.
     size: 10Gi
   resources:
     requests: { cpu: 100m, memory: 256Mi }

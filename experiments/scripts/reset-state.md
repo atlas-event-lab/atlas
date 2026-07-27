@@ -18,11 +18,11 @@ A wipe under live traffic races the apps (in-flight Sagas keep writing; `TRUNCAT
 active connections). So the order is always:
 
 1. **Quiesce** — scale `atlas-apps` to 0 and remove the HPAs, so no client holds a connection
-   or runs a Saga. Reuses the tested lever [`deploy/ops/apps-idle.sh`](../../deploy/ops/apps-idle.sh)
+   or runs a Saga. Reuses the tested lever [`deploy/ops/apps/idle.sh`](../../deploy/ops/apps/idle.sh)
    (it deletes HPAs *first*, otherwise they immediately re-scale back to `minReplicas`).
 2. **Wipe** — truncate transactional + outbox + idempotency tables per DB; reset Kafka
    consumer offsets; reset the inventory stock counters (§3).
-3. **Resume** — bring the apps back with [`deploy/ops/apps-resume.sh`](../../deploy/ops/apps-resume.sh),
+3. **Resume** — bring the apps back with [`deploy/ops/apps/resume.sh`](../../deploy/ops/apps/resume.sh),
    which restores replicas **and recreates the HPAs** (the experiments test HPA scaling, so the
    HPAs must come back). Flyway is a no-op on restart because the schema and
    `flyway_schema_history` are preserved (§2).
@@ -175,10 +175,10 @@ make -C experiments reset
 make -C experiments reset CONFIRM=yes
 ```
 
-What it does: guardrails → resolve CNPG primary + Kafka broker pods → `apps-idle.sh` (wait for
+What it does: guardrails → resolve CNPG primary + Kafka broker pods → `idle.sh` (wait for
 0 pods) → per-DB truncate set (§3) + inventory/search `reserved` reset via
 `psql -v ON_ERROR_STOP=1` in the primary pod → reset every Kafka consumer group to latest →
-`apps-resume.sh` → summary (both `reserved` sums should read 0).
+`resume.sh` → summary (both `reserved` sums should read 0).
 
 Flags: `--skip-kafka`, `--skip-quiesce` (when apps are already idle).
 

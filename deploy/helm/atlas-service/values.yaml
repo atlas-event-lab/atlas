@@ -10,11 +10,19 @@ fullnameOverride: ""
 image:
   # Override per service, e.g. ghcr.io/<org>/atlas-booking-service
   repository: ghcr.io/atlas-event-lab/atlas-service
-  tag: ""                     # empty -> uses .Chart.AppVersion
-  pullPolicy: IfNotPresent
+  tag: ""                     # empty -> .Chart.AppVersion (":latest" by default)
+  pullPolicy: Always          # ":latest" moves; Always keeps pods on the newest main build.
+                              # Pin image.tag to a fixed tag + set IfNotPresent for reproducibility.
 imagePullSecrets: []           # e.g. [{ name: ghcr-pull }]
 
 replicaCount: 1
+
+# Spring profile for every service in the cluster. Rendered as SPRING_PROFILES_ACTIVE.
+# NOT optional: each service's logback-spring.xml binds the JSON appender to `prod,monitoring`
+# and the plain-text one to `default,local,dev`. Deploying on the default profile therefore
+# emits unstructured logs, which Loki cannot parse into fields — no correlation_id filtering,
+# no per-service labels. Use `local`/`dev` only when running outside the cluster.
+springProfile: prod
 
 ports:
   http: 8080                   # server.port
@@ -55,6 +63,23 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 70
+
+# Hand the replica count to an EXTERNAL autoscaler — a KEDA ScaledObject applied separately
+# (deploy/platform/keda). Use this instead of `autoscaling.enabled` when scaling on Kafka lag
+# rather than CPU: payment-service is I/O-bound, so its CPU barely moves while the consumer
+# lag grows (ADR-0015, experiments/01-high-booking-concurrency/payment-service-scaling.md).
+#
+# Why a separate flag instead of just `autoscaling.enabled: false`:
+#   • `autoscaling.enabled: false` would render `spec.replicas` — and ArgoCD (selfHeal: true)
+#     then re-asserts that number on every sync, fighting KEDA for the replica count.
+#   • `autoscaling.enabled: true` renders a CPU HPA named after the release. KEDA's admission
+#     webhook then REFUSES the ScaledObject ("already managed by the hpa '<release>'"), because
+#     two autoscalers may not own one workload.
+# So KEDA-scaled services need BOTH omitted: no HPA and no replicas. That is what this does.
+#
+# Set it together with `autoscaling.enabled: false`, and apply the matching ScaledObject.
+keda:
+  enabled: false
 
 # Spread replicas across nodes (turn on for HA services: booking/inventory/payment).
 podAntiAffinity:

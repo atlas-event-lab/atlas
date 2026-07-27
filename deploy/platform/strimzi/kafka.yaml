@@ -20,13 +20,21 @@ spec:
   roles:
     - controller
     - broker
+  # Broker resources + heap (payment-service-scaling.md §7.2): predictable Burstable QoS.
+  # In Strimzi node-pool/KRaft mode these live on the KafkaNodePool, not on spec.kafka.
+  resources:
+    requests: { cpu: 250m, memory: 1.25Gi }
+    limits: { cpu: "1", memory: 2Gi }
+  jvmOptions:
+    -Xms: 1g
+    -Xmx: 1g
   storage:
     type: jbod
     volumes:
       - id: 0
         type: persistent-claim
-        size: 50Gi             # matches the live PVCs; Strimzi REJECTS shrinking storage, so this
-        class: oci-bv          # must equal the provisioned size. verify: kubectl get pvc -n atlas-data
+        size: 50Gi             # Strimzi REJECTS shrinking storage later, so keep this ≥ what's provisioned
+        # class: <name>        # omitted → uses the cluster's DEFAULT StorageClass. Uncomment + set to pin one.
         deleteClaim: false
 ---
 apiVersion: kafka.strimzi.io/v1
@@ -47,15 +55,7 @@ spec:
         port: 9092
         type: internal
         tls: false
-    # Broker resources + heap fixed (payment-service-scaling.md §7.2): predictable Burstable QoS
-    # instead of the previous unbounded BestEffort. ~250 partition-replicas need little heap;
-    # 2Gi limit leaves ~1Gi above -Xmx for off-heap / page cache.
-    resources:
-      requests: { cpu: 250m, memory: 1.25Gi }
-      limits: { cpu: "1", memory: 2Gi }
-    jvmOptions:
-      -Xms: 1g
-      -Xmx: 1g
+    # (Broker resources + heap moved to the KafkaNodePool above — required in node-pool mode.)
     config:
       # RF=3 / ISR=2 with acks=all (all producers) = writes survive losing 1 broker
       # (payment-service-scaling.md §7). Requires the node pool at replicas: 3.

@@ -1,0 +1,35 @@
+# Wave 2 — kube-prometheus-stack (Prometheus Operator CRDs + Prometheus + Grafana + Alertmanager).
+# Release name MUST be `kps`: the observability datasources/dashboards and the runbook reference
+# service names like kps-grafana / kps-kube-prometheus-stack-prometheus. Multi-source: chart +
+# git values. ServerSideApply is required for the oversized Prometheus Operator CRDs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: atlas
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 67.11.0
+      helm:
+        releaseName: kps
+        valueFiles:
+          - $values/deploy/platform/observability/kube-prometheus-stack-values.yaml
+    - repoURL: https://github.com/atlas-event-lab/hub.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

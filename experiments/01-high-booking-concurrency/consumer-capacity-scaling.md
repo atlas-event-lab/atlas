@@ -119,7 +119,7 @@ Two design points:
 - **WireMock capacity:** confirm it serves 12 concurrent 150 ms calls without liveness flaps; verify
   the load run isn't injecting the 7 s `TIMEOUT` scenario at a rate that hogs consumer threads.
 - **Node budget:** +12 partition-replicas × RF3 ≈ +36 on the brokers (trivial); payment's 4th pod
-  ≈ +1.1 Gi aggregate; fits the 3×(2 vCPU/16 GB) nodes.
+  ≈ +1.1 Gi aggregate; fits the 3 nodes (2 OCPU = 4 vCPU each; 12 vCPU / 48 GB total).
 
 ---
 

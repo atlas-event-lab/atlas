@@ -1,0 +1,53 @@
+# Wave 7 — the 8 Atlas services, one Application each, generated from the per-service Helm values
+# files. This mirrors the runbook's `for s in ...; helm upgrade --install $s-service` loop exactly:
+# same library chart (deploy/helm/atlas-service), same values/<svc>.yaml, release name <svc>-service.
+#
+# The git files generator matches values/*.yaml; goTemplate derives <svc> from the filename
+# (trimSuffix ".yaml"). Add a service = drop a values/<svc>.yaml; no change here.
+#
+# Expected transient RED state: until bootstrap.sh Phase B creates the `atlas-issuer` Secret, the
+# pods sit in CreateContainerConfigError (secret not found) — the intended, visible convergence
+# signal. They flip green on the next reconcile once the Secret exists.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: atlas-services
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+spec:
+  goTemplate: true
+  goTemplateOptions:
+    - missingkey=error
+  generators:
+    - git:
+        repoURL: https://github.com/atlas-event-lab/hub.git
+        revision: main
+        files:
+          - path: deploy/helm/atlas-service/values/*.yaml
+  template:
+    metadata:
+      name: '{{ trimSuffix ".yaml" .path.filename }}-service'
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: "7"
+    spec:
+      project: atlas
+      source:
+        repoURL: https://github.com/atlas-event-lab/hub.git
+        targetRevision: main
+        path: deploy/helm/atlas-service
+        helm:
+          releaseName: '{{ trimSuffix ".yaml" .path.filename }}-service'
+          valueFiles:
+            - values/{{ .path.filename }}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: atlas-apps
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true

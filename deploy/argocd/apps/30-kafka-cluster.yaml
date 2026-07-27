@@ -1,0 +1,29 @@
+# Wave 3 — the Strimzi Kafka cluster `atlas` (+ its metrics ConfigMap). Custom health holds this
+# Progressing until the Kafka CR is Ready, so wave 4 (topics) waits for the brokers. include
+# leaves topics.yaml + kafka-exporter-podmonitor.yaml for the wave-4 app, and skips kafka-rebalance.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka-cluster
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/strimzi
+    directory:
+      recurse: false
+      include: '{kafka.yaml,kafka-metrics-configmap.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

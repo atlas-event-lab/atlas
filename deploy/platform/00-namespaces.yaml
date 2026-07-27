@@ -1,13 +1,21 @@
 # Atlas platform namespaces (SPEC-DEPLOY-001 Phase 0/4).
-#   atlas-system  — platform: ingress-nginx, Keycloak, (observability in Phase 6)
-#   atlas-data    — stateful: CloudNativePG (Postgres), Strimzi (Kafka)
-#   atlas-apps    — the 9 Spring Boot services + wiremock (fake payment provider)
+#   atlas-system         — platform: ingress-nginx, Keycloak
+#   atlas-data           — stateful: CloudNativePG (Postgres), Strimzi (Kafka), Kafka UI
+#   atlas-apps           — the 9 Spring Boot services + wiremock (fake payment provider)
+#   atlas-observability  — Grafana LGTM stack (Runbook §7 · deploy/platform/observability)
 apiVersion: v1
 kind: Namespace
 metadata:
   name: atlas-system
   labels:
     atlas.dev/tier: platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: atlas-observability
+  labels:
+    atlas.dev/tier: observability
 ---
 apiVersion: v1
 kind: Namespace

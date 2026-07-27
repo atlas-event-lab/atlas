@@ -1,22 +1,37 @@
 # Ops — cost & capacity controls
 
-Two separate levers. They solve **different** problems — don't confuse them.
+Day-to-day operation of an **already-provisioned** cluster (the cluster itself is created
+with Terraform — see [`deploy/cluster/`](../cluster/README.md)). Cost saving here is about
+turning worker compute off when idle.
 
-| Lever | Saves credits? | Frees memory? | Use when |
-|-------|----------------|---------------|----------|
-| **On/off cluster** (`cluster-down.sh` / `cluster-up.sh`) | **Yes** — stops worker compute billing | Yes (nodes gone) | You're done for the day/session |
-| **App right-sizing** (HPA min 1) + `apps-idle.sh` | **No** — nodes stay powered on | Yes | You want platform up (Grafana/Kafka) but no app load |
+## Folder layout
 
-Key fact: OCI bills worker nodes for being **RUNNING**, not for how many pods they hold.
-Scaling replicas is a *capacity/stability* tool, never a cost tool. To save credits you
-must terminate the workers — that's what `cluster-down.sh` does (node pool → 0).
+One folder per cloud (mirrors `deploy/cluster/<cloud>/`), plus a cloud-agnostic `apps/`:
 
-## On/off (the real saver)
+| Path | Cloud | What it does | Saves credits? |
+|------|-------|--------------|----------------|
+| [`oracle/cluster-down.sh`](./oracle/cluster-down.sh) / [`cluster-up.sh`](./oracle/cluster-up.sh) | **Oracle** (`oci`) | Scale the OKE node pool to **0** / back up | **Yes** — workers terminate |
+| [`civo/cluster.sh`](./civo/cluster.sh) `up`/`down` | **Civo** (`terraform`) | Create / destroy the cluster (no "stop" on Civo) | **Yes** — $0 while down |
+| [`apps/idle.sh`](./apps/idle.sh) / [`apps/resume.sh`](./apps/resume.sh) | **Any** (`kubectl`/`helm`) | Scale business apps to 0 / restore, keeping the platform up | **No** — nodes stay on |
+
+Each cloud folder takes a gitignored `config.env` (copy its `config.env.example`).
+
+Two separate levers — don't confuse them:
+
+- **On/off cluster** (Oracle `oracle/cluster-*.sh` · Civo `civo/cluster.sh up/down`) is
+  the **real credit-saver**: a cloud bills worker nodes for being **RUNNING**, not for how
+  many pods they hold. To save money you must terminate/deallocate the workers.
+- **App right-sizing** (`apps/idle.sh`) frees memory but keeps nodes powered on, so it saves
+  **nothing** — use it when you want the platform (Grafana/Kafka/Keycloak) up with no app load.
+
+## On/off — Oracle (OKE)
 
 ```bash
-./cluster-down.sh     # node pool -> 0, workers terminate, compute billing stops
-./cluster-up.sh       # node pool -> 3, waits for Ready (~10-15 min cold start)
-./cluster-up.sh 4     # or bring it up at a different size
+cd oracle
+export NODEPOOL_OCID="ocid1.nodepool.oc1..."   # your pool (or set it in config.env)
+./cluster-down.sh   # node pool -> 0, workers terminate, compute billing stops
+./cluster-up.sh     # node pool -> 3, waits for Ready (~10-15 min cold start)
+./cluster-up.sh 4   # or bring it up at a different size
 ```
 
 Rough compute cost, 3 × (2 OCPU / 16 GB) ≈ **$0.22/h ≈ ~$155/mo at 24/7**. Running only
@@ -33,15 +48,30 @@ attach a **Reserved Public IP** to the LB so the address is stable across recrea
 **Check the cluster type:** an *Enhanced* OKE cluster bills ~$0.10/h for the control plane
 even at 0 nodes (~$73/mo); a *Basic* cluster's control plane is free. Worth confirming.
 
+## On/off — Civo
+
+Civo has **no stop/deallocate** and a cluster needs ≥ 1 node, so the off switch is
+destroying the cluster with Terraform (recreates in ~2 min). The cluster is a single fixed
+12 vCPU / 48 GB pool (provisioned in [`deploy/cluster/civo/terraform`](../cluster/civo/terraform)).
+
+```bash
+cd civo
+export CIVO_TOKEN="your-civo-api-key"
+./cluster.sh up       # terraform apply   -> cluster live
+./cluster.sh down     # terraform destroy -> $0 (PVC data lost unless volumes Retain)
+./cluster.sh status   # civo CLI show, or Terraform state
+```
+
 ## Idle apps but keep the cluster up
 
 ```bash
-./apps-idle.sh        # deletes HPAs + scales atlas-apps deploys to 0 (platform stays up)
-./apps-resume.sh      # helm upgrade loop; restores replicas + HPAs, preserves image tags
+cd apps
+./idle.sh        # deletes HPAs + scales atlas-apps deploys to 0 (platform stays up)
+./resume.sh      # helm upgrade loop; restores replicas + HPAs, preserves image tags
 ```
 
-`apps-idle.sh` deletes the HPAs first — otherwise they immediately re-scale the
-deployments back up to `minReplicas`.
+`apps/idle.sh` deletes the HPAs first — otherwise they immediately re-scale the
+deployments back up to `minReplicas`. Both are cloud-agnostic (pure `kubectl`/`helm`).
 
 ## Baseline replica strategy (already in the chart values)
 
@@ -57,7 +87,7 @@ Lean baseline so the stack fits at idle; HPA scales up under load/experiments:
 Apply after editing values (or let CI/CD do it):
 
 ```bash
-cd ../../atlas-gitops/charts/atlas-service
+cd ../helm/atlas-service
 for s in booking inventory payment; do
   helm upgrade "$s-service" . -f "values/$s.yaml" --reuse-values \
     --set autoscaling.minReplicas=1 -n atlas-apps
@@ -78,7 +108,7 @@ worst case (~23-25 GiB) fits. 24 GB would just be idle, paid-for RAM.
 > kubectl get nodes -o custom-columns=NAME:.metadata.name,MEM:.status.capacity.memory
 > ```
 > Apply the new size by recycling: *Cycle nodes* (Enhanced clusters) or
-> `./cluster-down.sh && ./cluster-up.sh` (recreates all nodes fresh).
+> `oracle/cluster-down.sh && oracle/cluster-up.sh` (recreates all nodes fresh).
 
 **At 16 GB the binding limit shifts from memory to the pod cap** (3 × 15 = 45; the lean
 census already ~42). Raise `max-pods-per-node` to ~30 **during the node recycle** (it's a

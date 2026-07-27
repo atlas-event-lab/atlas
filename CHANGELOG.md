@@ -12,6 +12,16 @@ All notable changes to Atlas are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **GitOps deployment (Argo CD)** under [`deploy/argocd/`](./deploy/argocd/README.md): an
+  app-of-apps root + sync-waves brings up the whole stack (operators, stateful CRs, the 8
+  services via an `ApplicationSet`, observability, KEDA) and self-heals it. Deploy is now
+  `terraform apply` + one idempotent `bootstrap.sh` (DB secrets, WireMock CM, `atlas-issuer`,
+  LB-host patching), watchable wave-by-wave in the Argo UI. Custom health gates the stateful-CR
+  waves on real CNPG/Kafka/Keycloak readiness. The manual `DEPLOYMENT-RUNBOOK.md` is kept as the
+  didactic path (its Steps 1–8 map 1:1 to the waves); new `TS-ARGO-01..04` troubleshooting cases.
+
 - Tag `v1.0.0` after the deployment-runbook acceptance test passes on a fresh cluster.
 
 ## [1.0.0] — _pending runbook validation_
@@ -75,7 +85,7 @@ experiment.
 - Apache License 2.0. Contributing guide, code of conduct, security policy, and issue / PR
   templates included.
 
-<!-- Version-compare links — adjust the org/repo to the real hub repository before publishing.
+<!-- Version-compare links — adjust the org/repo to the real atlas repository before publishing.
 [Unreleased]: https://github.com/atlas-event-lab/atlas/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/atlas-event-lab/atlas/releases/tag/v1.0.0
 -->

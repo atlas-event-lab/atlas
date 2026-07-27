@@ -52,12 +52,12 @@ redelivery — using the same cluster levers as `reset-state.sh`:
 2. **Snapshot BEFORE** (Postgres — the persistent ground truth): `consumed_events` count,
    `reservations` count, `sum(reserved_count)`, `sum(room_type_availability.reserved)`,
    `outbox` count. Also record the `inventory-service` group's lag on `booking.created`.
-3. **Quiesce** the apps (`deploy/ops/apps-idle.sh`) so the `inventory-service` group has no
+3. **Quiesce** the apps (`deploy/ops/apps/idle.sh`) so the `inventory-service` group has no
    active members — a precondition for an offset reset.
 4. **Replay:** reset **only** the `inventory-service` group's offset on `booking.created`
    backwards (`--shift-by -N`, or `--to-earliest` with `--all`). The resulting lag = the
    number of events that will be redelivered.
-5. **Resume** the apps (`deploy/ops/apps-resume.sh`); `inventory-service` re-consumes the
+5. **Resume** the apps (`deploy/ops/apps/resume.sh`); `inventory-service` re-consumes the
    replayed `booking.created` events and dedups them.
 6. **Snapshot AFTER** once lag drains, and assert the hypothesis.
 

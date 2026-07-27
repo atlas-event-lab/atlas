@@ -6,7 +6,7 @@
 # backwards on booking.created, then proves the idempotency guard makes it effectively-once:
 # no new reservations, no stock change, no new outbox rows — only duplicate skips.
 #
-# It reuses the same levers as scripts/reset-state.sh (apps-idle/apps-resume, kafka-consumer-
+# It reuses the same levers as scripts/reset-state.sh (ops/apps idle+resume, kafka-consumer-
 # groups in the broker pod, psql in the CNPG primary). It is NON-destructive to data: it moves
 # ONE consumer group's offsets and never truncates a table.
 #
@@ -38,7 +38,9 @@ DRY_RUN="${DRY_RUN:-0}"
 CONFIRM="${CONFIRM:-no}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OPS_DIR="${OPS_DIR:-$(cd "${SCRIPT_DIR}/../../deploy/ops" && pwd)}"
+# The quiesce/resume levers live in deploy/ops/apps (idle.sh + resume.sh). Override OPS_DIR
+# if you keep them elsewhere; they are validated at startup by require_ops_scripts below.
+OPS_DIR="${OPS_DIR:-$(cd "${SCRIPT_DIR}/../../deploy/ops/apps" 2>/dev/null && pwd)}"
 
 say()  { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 info() { printf '   %s\n' "$*"; }
@@ -48,8 +50,29 @@ ok()   { printf '\033[1;32m   PASS %s\033[0m\n' "$*"; }
 bad()  { printf '\033[1;31m   FAIL %s\033[0m\n' "$*"; }
 run()  { if [[ "$DRY_RUN" == "1" ]]; then printf '   [dry-run] %s\n' "$*"; else eval "$*"; fi; }
 
+# Validate the ops levers BEFORE anything runs. Without this the run gets as far as taking a
+# snapshot and only then dies with a bare "No such file or directory", mid-procedure — the
+# worst moment to discover a path is wrong.
+require_ops_scripts() {
+  local missing=()
+  [[ -n "$OPS_DIR" && -d "$OPS_DIR" ]] || {
+    die "ops directory not found: '${OPS_DIR:-<unresolved>}'. Expected the quiesce/resume" \
+        "levers at deploy/ops/apps (idle.sh, resume.sh). Set OPS_DIR to their location."
+  }
+  [[ -f "$OPS_DIR/idle.sh"   ]] || missing+=("idle.sh")
+  [[ -f "$OPS_DIR/resume.sh" ]] || missing+=("resume.sh")
+  if (( ${#missing[@]} )); then
+    die "missing in '$OPS_DIR': ${missing[*]}. These are the apps quiesce/resume levers" \
+        "(deploy/ops/README.md). If your tree still has the old apps-idle.sh /" \
+        "apps-resume.sh at deploy/ops, it predates the ops reorganization — update it or" \
+        "set OPS_DIR."
+  fi
+}
+
 # ── Guardrails ───────────────────────────────────────────────────────────────
 say "Guardrails"
+require_ops_scripts
+info "ops levers: $OPS_DIR/{idle,resume}.sh"
 CTX="$(kubectl config current-context 2>/dev/null || true)"
 [[ -n "$CTX" ]] || die "no kubectl context set."
 info "kubectl context: $CTX"
@@ -107,8 +130,8 @@ if [[ "${B_CONSUMED:-0}" -eq 0 ]]; then
 fi
 
 # ── 1. Quiesce ───────────────────────────────────────────────────────────────
-say "1. Quiesce apps (apps-idle.sh) — so the '$GROUP' group has no active members"
-run "NS='$APPS_NS' bash '${OPS_DIR}/apps-idle.sh'"
+say "1. Quiesce apps (ops/apps/idle.sh) — so the '$GROUP' group has no active members"
+run "NS='$APPS_NS' bash '${OPS_DIR}/idle.sh'"
 if [[ "$DRY_RUN" != "1" ]]; then
   info "waiting for app pods to terminate..."
   for _ in $(seq 1 30); do
@@ -136,8 +159,8 @@ if [[ "$DRY_RUN" != "1" ]]; then
 fi
 
 # ── 3. Resume ────────────────────────────────────────────────────────────────
-say "3. Resume apps (apps-resume.sh) — inventory re-consumes and dedups the replay"
-run "NS='$APPS_NS' bash '${OPS_DIR}/apps-resume.sh'"
+say "3. Resume apps (ops/apps/resume.sh) — inventory re-consumes and dedups the replay"
+run "NS='$APPS_NS' bash '${OPS_DIR}/resume.sh'"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   say "DRY-RUN complete — nothing changed."

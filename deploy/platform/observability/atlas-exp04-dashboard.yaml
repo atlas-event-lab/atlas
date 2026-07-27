@@ -1,0 +1,550 @@
+# Grafana dashboard — Atlas Experiment 04: Consumer Crash mid-Saga (resilience).
+# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label grafana_dashboard: "1")
+# and installed at cluster bootstrap by the ArgoCD `obs-config` Application (wave 4).
+#
+# Uses only metrics that already exist:
+#   atlas_payment_provider_calls_total{outcome}      payment-service
+#   atlas_payment_recoveries_total                   payment-service (ADR-0021 sweeper)
+#   atlas_payment_events_skipped_total{reason}       payment-service (idempotency guard)
+#   atlas_booking_outcomes_total{state}              booking-service (ADR-0028)
+#   kafka_consumergroup_lag, kube_pod_* / kube_deployment_*
+#
+# Every stat uses increase() over the dashboard range, which is reset-aware — this experiment
+# kills the pods, so the Micrometer counters restart from 0 by design.
+#
+# The authoritative pass/fail is still runbook.sh (Postgres ground truth). This dashboard is
+# for WATCHING the crash and the convergence happen.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-exp04-dashboard
+  namespace: atlas-observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Atlas"
+data:
+  atlas-exp04-dashboard.json: |
+    {
+      "uid": "atlas-exp04-crash",
+      "title": "Atlas — Experiment 04: Consumer Crash mid-Saga",
+      "tags": [
+        "atlas",
+        "experiment",
+        "resilience",
+        "payment"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "The verdict — did the system converge?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Double charges (proxy)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_provider_calls_total{outcome=\"succeeded\"}[$__range])) - sum(increase(atlas_booking_outcomes_total{state=\"CONFIRMED\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "0 ✓"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Approved charges minus confirmed bookings over the same range. Must be 0: one charge per booking. Positive means something was charged twice. This is an aggregate proxy — the hard proof is runbook.sh counting Payment rows per bookingId.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Outstanding lag — payment-service",
+          "targets": [
+            {
+              "expr": "sum(kafka_consumergroup_lag{consumergroup=\"payment-service\"})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "0 ✓"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Once the pods are back, the group must drain to 0. Lag that never falls means loss, or consumers that cannot catch up.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Sweeper recoveries (ADR-0021)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_recoveries_total[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "blue"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Bookings whose payment died inside window W2, re-driven by the recovery sweeper. Here a value > 0 is EXPECTED: it is the long way round, ~4 min at defaults. Every one of them must still converge.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Duplicates absorbed by the guard",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_events_skipped_total{reason=\"duplicate\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "purple"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Redelivered inventory.reserved events discarded by the idempotency guard. Killing without an offset commit makes Kafka redeliver: this is at-least-once delivery becoming effectively-once, and it is why there is no double charge.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          }
+        },
+        {
+          "type": "row",
+          "title": "The crash and the recovery",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "payment-service replicas and restarts",
+          "targets": [
+            {
+              "expr": "sum(kube_deployment_status_replicas{namespace=\"atlas-apps\",deployment=\"payment-service\"})",
+              "legendFormat": "desired replicas",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(kube_pod_status_ready{namespace=\"atlas-apps\",pod=~\"payment-service.*\",condition=\"true\"})",
+              "legendFormat": "pods Ready",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"atlas-apps\",pod=~\"payment-service.*\"}[$__rate_interval]))",
+              "legendFormat": "restarts",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "The moment of the SIGKILL: Ready drops to 0 and comes back. Every other panel is read relative to this window.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "payment-service lag on inventory.reserved",
+          "targets": [
+            {
+              "expr": "sum(kafka_consumergroup_lag{consumergroup=\"payment-service\"})",
+              "legendFormat": "lag",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Builds up while the pods are dead and drains when they return. The shape matters: it should fall steadily to 0, not plateau.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          }
+        },
+        {
+          "type": "row",
+          "title": "No loss, no double charge",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Provider calls /s by outcome",
+          "targets": [
+            {
+              "expr": "sum by (outcome) (rate(atlas_payment_provider_calls_total[$__rate_interval]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Every real charge against WireMock. After the restart it should resume without an anomalous spike — a spike would mean already-completed charges being reprocessed.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Duplicates discarded /s",
+          "targets": [
+            {
+              "expr": "sum by (event) (rate(atlas_payment_events_skipped_total{reason=\"duplicate\"}[$__rate_interval]))",
+              "legendFormat": "{{event}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "A spike right after the restart is the redeliveries arriving and being absorbed. No spike means either no redelivery happened or the guard did not engage.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Booking outcomes /s",
+          "targets": [
+            {
+              "expr": "sum by (state) (rate(atlas_booking_outcomes_total[$__rate_interval]))",
+              "legendFormat": "{{state}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Requires booking-service with ADR-0028. By the end of the batch nothing may remain in flight: every booking reaches a terminal state, most of them CONFIRMED.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 17
+          }
+        }
+      ]
+    }

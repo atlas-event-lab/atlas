@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and adjust. terraform.tfvars is gitignored.
+#
+# Auth: DON'T put the token here if you can avoid it — prefer the environment:
+#   export CIVO_TOKEN="your-civo-api-key"
+# (Civo Dashboard → Account → Security → API keys)
+
+region       = "NYC1"
+cluster_name = "atlas-civo"
+
+# RECOMMENDED — pin the k3s version for a reproducible cluster.
+# 1) List what Civo currently offers:   civo kubernetes versions
+#    (or: curl -H "Authorization: bearer $CIVO_TOKEN" https://api.civo.com/v2/kubernetes/versions)
+# 2) Copy the one marked default/stable and uncomment the line below with that exact string:
+# kubernetes_version = "1.36.0-k3s1"   # <-- replace with a value from step 1
+#
+# Left empty, Terraform uses Civo's current default (valid, but not reproducible).
+
+# The fixed experiment pool (defaults already give 12 vCPU / 48 GB):
+# node_size  = "g4p.kube.small"   # 4 vCPU / 16 GB
+# node_count = 3

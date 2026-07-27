@@ -112,18 +112,58 @@ export function setup() {
       `Reset state or pick a resource with capacity.`,
     );
   }
-  if (N <= expectedWinners) {
-    console.warn(
-      `N (${N}) <= expected winners (${expectedWinners}); every booking may win and the ` +
-      `contention/rejection path won't be exercised. Raise N well above capacity/q.`,
-    );
-  }
-
+  // Log the resolved target BEFORE the demand check, so a run that aborts still shows you the
+  // numbers you need to fix it. Rejects are floored at 0 — a negative count is meaningless.
   console.log(
     `CONTENTION target ${offer.type} ${offer.resourceId} (${offer.label}) — ` +
     `capacity=${before.totalCapacity}, reserved=${before.reservedCount}, available=${capacityForRun}; ` +
-    `q=${Q}, N=${N}, expected winners=${expectedWinners}, expected rejects=${N - expectedWinners}.`,
+    `q=${Q}, N=${N}, expected winners=${expectedWinners}, ` +
+    `expected rejects=${Math.max(0, N - expectedWinners)}.`,
   );
+
+  // THE demand check. Contention needs demand to EXCEED supply: N bookings competing for
+  // floor(available/q) winnable slots. If N does not exceed that, every booking wins by
+  // construction — no booking is ever rejected, the lock is never asked to turn anyone away,
+  // and the run cannot falsify the no-oversell hypothesis. It would report a green PASS while
+  // having tested nothing, which is worse than failing. So we refuse to start.
+  if (N <= expectedWinners) {
+    throw new Error(
+      `NOT A CONTENTION RUN — refusing to start. N (${N}) does not exceed the winnable slots ` +
+      `(${expectedWinners} = floor(available ${capacityForRun} / q ${Q})), so supply meets ` +
+      `demand and every booking wins by construction. Nothing would be rejected and the ` +
+      `invariant would never be stressed. Fix it either way: ` +
+      `(a) raise N well above ${expectedWinners} — e.g. \`-e N=${Math.ceil(expectedWinners * 1.5)}\` ` +
+      `(capped by MAX_VUS only for concurrency, not for total iterations); or ` +
+      `(b) point CONTENTION_* at a smaller-capacity resource, which makes the burst faster ` +
+      `and the contention sharper.` +
+      (before.reservedCount > 0
+        ? ` NOTE: this target starts dirty (reserved=${before.reservedCount} of ` +
+          `${before.totalCapacity}) — run \`make -C .. reset CONFIRM=yes\` first, or the ` +
+          `winnable slots shift between runs and results are not comparable.`
+        : ''),
+    );
+  }
+
+  // Demand exceeds supply, but only just: few losers means the rejection path is barely
+  // exercised and a handful of lost bookings (e.g. a token error) can swing the tally.
+  if (N < expectedWinners * 1.2) {
+    console.warn(
+      `Thin contention margin: N (${N}) is only ${((N / expectedWinners - 1) * 100).toFixed(0)}% ` +
+      `above the ${expectedWinners} winnable slots, so just ${N - expectedWinners} booking(s) ` +
+      `should be rejected. The run is valid but the rejection path is weakly exercised — ` +
+      `prefer N >= ${Math.ceil(expectedWinners * 1.5)} for a decisive result.`,
+    );
+  }
+
+  if (before.reservedCount > 0) {
+    console.warn(
+      `Dirty baseline: the target already holds ${before.reservedCount} of ` +
+      `${before.totalCapacity} units before the burst. The run is still valid (the verification ` +
+      `measures the RISE in reservedCount, not the absolute), but the winnable slots differ ` +
+      `from a clean run, so results are not comparable across runs. ` +
+      `Run \`make -C .. reset CONFIRM=yes\` for a clean baseline.`,
+    );
+  }
 
   return { offer, before, expectedWinners };
 }

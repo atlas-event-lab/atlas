@@ -1,0 +1,34 @@
+# Wave 1 — ingress-nginx. Installing it creates the Service type=LoadBalancer that the managed
+# cloud fills with an EXTERNAL-IP; that IP is what bootstrap.sh Phase B polls for. Multi-source:
+# the chart from the upstream Helm repo + values from this git repo (ref: values).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: atlas
+  sources:
+    - repoURL: https://kubernetes.github.io/ingress-nginx
+      chart: ingress-nginx
+      targetRevision: 4.12.1
+      helm:
+        releaseName: ingress-nginx
+        valueFiles:
+          - $values/deploy/platform/ingress-nginx/values.yaml
+    - repoURL: https://github.com/atlas-event-lab/hub.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

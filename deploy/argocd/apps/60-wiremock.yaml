@@ -1,0 +1,28 @@
+# Wave 6 — WireMock (Fake Payment Provider). payment-service depends on it. Mounts the
+# wiremock-mappings ConfigMap created imperatively by bootstrap.sh Phase A (step 4).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wiremock
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/apps
+    directory:
+      recurse: false
+      include: 'wiremock.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

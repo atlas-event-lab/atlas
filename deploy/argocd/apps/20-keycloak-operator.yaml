@@ -1,0 +1,31 @@
+# Wave 2 — Keycloak operator. No official Helm chart: Argo pulls the pinned release manifests
+# straight from the keycloak-k8s-resources git repo (CRDs + operator Deployment/RBAC). Pinned to
+# 26.0.5 so the Keycloak CR's status.conditions shape stays stable for the custom health check.
+# ServerSideApply is required — the Keycloak CRDs exceed the client-side apply annotation limit.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/keycloak/keycloak-k8s-resources.git
+    targetRevision: 26.0.5
+    path: kubernetes
+    directory:
+      recurse: false
+      include: '{keycloaks.k8s.keycloak.org-v1.yml,keycloakrealmimports.k8s.keycloak.org-v1.yml,kubernetes.yml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

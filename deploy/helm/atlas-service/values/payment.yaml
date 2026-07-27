@@ -1,16 +1,31 @@
-# payment-service — Saga participant (charges via Fake Payment Provider). HA: anti-affinity + HPA min 2.
+# payment-service — Saga participant (charges via Fake Payment Provider).
+# HA: anti-affinity + KEDA min 1 / max 4 (scaled on Kafka consumer lag, NOT CPU).
 # PAYMENT_PROVIDER_URL points at the WireMock fake provider, which must be deployed in atlas-apps.
 # Deploy:  helm upgrade --install payment-service ../atlas-service -f payment.yaml -n atlas-apps
+#          kubectl apply -f deploy/platform/keda/payment-scaledobject.yaml   # owns the replicas
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-payment-service
   tag: ""
 
+# Scaled by KEDA, not by CPU. payment-service is I/O-bound (provider HTTP + JDBC), so CPU
+# utilisation barely moves while the `inventory.reserved` consumer lag grows — the CPU HPA
+# under-scales it exactly when it matters. The KEDA Kafka scaler reads that lag from the
+# broker instead. Rationale: ADR-0015 and
+# experiments/01-high-booking-concurrency/payment-service-scaling.md §3.1.
+#
+# Both flags below are load-bearing, and must move together:
+#   autoscaling.enabled: false  — no CPU HPA. If one existed, KEDA's admission webhook would
+#                                 REFUSE the ScaledObject ("already managed by the hpa
+#                                 'payment-service'") and payment would silently fall back to
+#                                 CPU scaling.
+#   keda.enabled: true          — also omit `spec.replicas`, so ArgoCD (selfHeal) does not
+#                                 re-assert a fixed count on every sync and fight KEDA.
+# The replica bounds now live in the ScaledObject (minReplicaCount/maxReplicaCount), not here.
 autoscaling:
+  enabled: false
+keda:
   enabled: true
-  minReplicas: 2
-  maxReplicas: 4
-  targetCPUUtilizationPercentage: 70
 
 podAntiAffinity:
   enabled: true

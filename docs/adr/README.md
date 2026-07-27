@@ -72,6 +72,10 @@ depends_on:                # other ADR ids / spec_ids
 | [ADR-0025](ADR-0025-flight-catalog-resync.md) | Flight | Catalog resync — republish current state from `flight_db` for read-model rebuild beyond retention (Exp 07, Strategy B) | `COMPLETED` |
 | [ADR-0026](ADR-0026-hotel-catalog-resync.md) | Hotel | Catalog resync — republish hotels/room-types (+ derived night calendar) from `hotel_db` (Exp 07, Strategy B) | `COMPLETED` |
 | [ADR-0027](ADR-0027-inventory-availability-resync.md) | Inventory | Availability resync — republish absolute `reserved`+`version` from `inventory_db`, after catalog (Exp 07, Strategy B) | `COMPLETED` |
+| [ADR-0028](ADR-0028-booking-saga-outcome-metrics.md) | Booking | Saga outcome + end-to-end duration meters — `POST /bookings` 201 is acceptance, not success (Exp 01) | `COMPLETED` |
+| [ADR-0029](ADR-0029-search-calendar-write-path.md) | Search | Batch the hotel calendar write path — Persistable + JDBC batching; one event materializes a year of nights (Exp 07) | `COMPLETED` |
+| [ADR-0030](ADR-0030-travel-cart-cpu-hpa.md) | Travel Cart | CPU HPA 1–4 replicas — the journey's first three calls were pinned to one pod with no autoscaler at all (Exp 01) | `COMPLETED` |
+| [ADR-0031](ADR-0031-booking-replica-ceiling.md) | Booking | Replica ceiling 4 → 5 — one pod carries REST + producer + consumer; the knee moved here once the cart scaled (Exp 01) | `COMPLETED` |
 
 # Related historical note
 

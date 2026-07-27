@@ -1,0 +1,27 @@
+# Wave 2 — KEDA operator (ships the keda.sh CRDs used by the wave-9 ScaledObjects).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: atlas
+  source:
+    repoURL: https://kedacore.github.io/charts
+    chart: keda
+    targetRevision: 2.16.1
+    helm:
+      releaseName: keda
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keda
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

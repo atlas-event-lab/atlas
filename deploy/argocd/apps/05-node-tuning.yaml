@@ -1,0 +1,28 @@
+# Wave 0 — DaemonSet that raises fs.inotify limits on every node (Kafka/CNPG/observability
+# open many watches). Lands in kube-system (hardcoded in the manifest).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: node-tuning
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/node-tuning
+    directory:
+      recurse: false
+      include: '*.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

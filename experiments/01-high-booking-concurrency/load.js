@@ -66,7 +66,23 @@ const convertLatency = new Trend('cart_convert_duration', true); // trailing con
 const bookingsCreated = new Counter('bookings_created'); // 201
 const bookingsReplayed = new Counter('bookings_replayed'); // 200
 const bookingErrors = new Counter('bookings_failed');
-const bookingSuccess = new Rate('booking_success_rate');
+
+// ── Two rates, because they answer two different questions ───────────────────────────────
+// These used to be a single `booking_success_rate`, which recorded `false` for a failed CART
+// too. That is how the 2026-07-26 run read as "booking success 93%" when 806 of its 902
+// failures never reached POST /bookings at all and only 6 were booking failures — the number
+// was really a journey rate wearing a booking name.
+//
+//   journey_success_rate  — did the whole flow complete? Every step counts. This is the
+//                           end-to-end user experience, and the one that degrades first,
+//                           because it is gated by whichever hop is slowest or weakest.
+//   booking_accept_rate   — OF THE JOURNEYS THAT REACHED IT, did POST /bookings accept?
+//                           Isolates booking-service from everything upstream.
+//
+// Neither is the Saga success rate. A 201 only means the Saga was kicked off; whether it
+// reached CONFIRMED is answered server-side by atlas_booking_outcomes_total (ADR-0028).
+const journeySuccess = new Rate('journey_success_rate');
+const bookingAccept = new Rate('booking_accept_rate');
 
 // Smoke: a fixed, exact number of journeys. Load: the ramping arrival-rate baseline.
 const scenarios = SMOKE_ITERATIONS > 0
@@ -109,7 +125,11 @@ export const options = {
   setupTimeout: SETUP_TIMEOUT,
   thresholds: {
     // Baseline expectations — tune from your first run, don't treat as gospel yet.
-    booking_success_rate: ['rate>0.98'],
+    // Split deliberately (see the metric definitions above): the journey rate is gated by the
+    // weakest hop anywhere in the flow, while the accept rate isolates booking-service. Holding
+    // them to the same number would put booking on the hook for a cart fault.
+    journey_success_rate: ['rate>0.98'],
+    booking_accept_rate: ['rate>0.99'],
     'booking_create_duration': ['p(95)<2000'], // ms; POST /bookings is a sync saga kickoff
     'journey_duration': ['p(95)<4000'], // cart + add flight + booking end-to-end
     http_req_failed: ['rate<0.02'],
@@ -127,6 +147,7 @@ export function setup() {
   getToken(); // fail fast if Keycloak / test client / user is misconfigured
 
   const bundles = [];
+  const searched = CONFIG.search.routes.length;
   for (const route of CONFIG.search.routes) {
     if (needFlights && !(route.origin && route.destiny)) continue;
     if (needHotels && !route.city) continue;
@@ -142,12 +163,21 @@ export function setup() {
 
   if (bundles.length === 0) {
     throw new Error(
-      `No routes with in-stock inventory for SCENARIO=${SCENARIO}. ` +
-      `Fill/adjust the ROUTES table in lib/k6/config.js and check dates & seeded inventory.`,
+      `No routes with in-stock inventory for SCENARIO=${SCENARIO} ` +
+      `(searched ${searched} of ${CONFIG.search.routesTotal} routes). ` +
+      (searched < CONFIG.search.routesTotal
+        ? `You are running a SAMPLE (ROUTES_SAMPLE=${searched}); the drawn routes may simply have no ` +
+          `stock. Raise ROUTES_SAMPLE, or try another draw with ROUTES_SEED. `
+        : '') +
+      `Otherwise fill/adjust the ROUTES table in lib/k6/config.js and check dates & seeded inventory.`,
     );
   }
+  // Say which routes were searched, not just which were usable — a sampled run and a full run
+  // are not comparable, and that has to be visible in the log that ends up next to the results.
   console.log(
-    `SCENARIO=${SCENARIO} — ${bundles.length} usable route bundle(s): ` +
+    `SCENARIO=${SCENARIO} — searched ${searched} of ${CONFIG.search.routesTotal} route(s)` +
+    (searched < CONFIG.search.routesTotal ? ` [sampled, seed ${CONFIG.search.routesSeed}]` : ' [full table]') +
+    ` — ${bundles.length} usable bundle(s): ` +
     bundles.map((b) => `${b.label} [${b.flights.length}F/${b.hotels.length}H]`).join(', '),
   );
   return { bundles };
@@ -175,7 +205,9 @@ export default function (data) {
   const { res: cartRes, cartId } = createCart();
   cartLatency.add(cartRes.timings.duration);
   if (cartRes.status !== 200 || !cartId) {
-    bookingSuccess.add(false);
+    // The journey failed, but NOT at booking — this iteration never reaches POST /bookings, so
+    // booking_accept_rate is deliberately left untouched rather than penalised for a cart fault.
+    journeySuccess.add(false);
     bookingErrors.add(1);
     return; // no cart -> can't continue this journey
   }
@@ -186,7 +218,7 @@ export default function (data) {
     cartAfter = addOffer(cartId, offer);
     addItemLatency.add(cartAfter.timings.duration);
     if (cartAfter.status !== 200) {
-      bookingSuccess.add(false);
+      journeySuccess.add(false); // same reasoning: upstream of booking, so no accept sample
       bookingErrors.add(1);
       return;
     }
@@ -197,8 +229,11 @@ export default function (data) {
   const res = createBooking(offers, total); // fresh Idempotency-Key per call
   bookingLatency.add(res.timings.duration);
 
+  // This iteration DID reach POST /bookings, so it samples both rates: the journey outcome and
+  // booking-service's own accept rate.
   const ok = res.status === 200 || res.status === 201;
-  bookingSuccess.add(ok);
+  bookingAccept.add(ok);
+  journeySuccess.add(ok);
   if (res.status === 201) bookingsCreated.add(1);
   else if (res.status === 200) bookingsReplayed.add(1);
   else bookingErrors.add(1);

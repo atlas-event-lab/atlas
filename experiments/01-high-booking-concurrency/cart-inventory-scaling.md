@@ -1,14 +1,36 @@
 # Cart + Inventory scaling — findings, decision & plan
 
 **Origin:** Experiment 01 — High Booking Concurrency, run **2026-07-08** (`RESULTS_3.md`)
-**Phase:** 7 · **Status:** proposal
+**Phase:** 7 · **Status:** §2.1 **implemented** ([ADR-0030](../../docs/adr/ADR-0030-travel-cart-cpu-hpa.md)) · §2.2–2.4 still proposal
 **Services affected:** travel-cart-service, inventory-service (consumer), booking-service
 (topic owner for `booking.*`).
+
+> **2026-07-26 — §2.1 shipped, and the delay cost a run.** The travel-cart HPA proposed below sat
+> unimplemented for three weeks. The Experiment 01 re-run on 2026-07-26 failed its
+> `journey_duration` threshold for exactly the reason predicted here: `cart_create` p95 3.84s,
+> `cart_add_item` p95 4.08s and `cart_convert` p95 4.07s against `booking_create_duration` p95 of
+> **1.00s**. The bottleneck was still the cart, still pinned at one pod. It is now enabled — see
+> §2.1 and [ADR-0030](../../docs/adr/ADR-0030-travel-cart-cpu-hpa.md).
+>
+> **The run right after it did what §3 said it would: the knee moved.** Journey failures went
+> 942 → **0**, every cart p95 dropped ~20%, and `booking_create_duration` p95 went **1.00s →
+> 7.81s** — booking became the slowest hop for the first time. Two follow-ups, both recorded as
+> ADRs: travel-cart `maxReplicas` 3 → 4 (it was sitting at ~90% of its CPU *limit* with 3 pods),
+> and booking 4 → 5 ([ADR-0031](../../docs/adr/ADR-0031-booking-replica-ceiling.md)).
+>
+> ⚠️ **§3's cost model was wrong in one respect, and it matters.** It assumed "CPU requests stay
+> modest (travel-cart/inventory at 150m each)" and reasoned about *memory* ceilings. The measured
+> run showed travel-cart at **600% of its CPU request** — ~900m against a 150m request and a
+> 1000m limit. The request is not modest, it is **6× under-sized**, with two consequences the
+> plan did not anticipate: the HPA never modulates (its input sits permanently above the 70%
+> target, so `maxReplicas` becomes the only replica count under load), and the scheduler places
+> pods believing they need 150m while they draw ~900m. Right-sizing `requests.cpu` across the
+> chart is the open follow-up — a capacity decision, not a config tweak.
 
 > Companion to [`payment-service-scaling.md`](./payment-service-scaling.md). That doc fixed the
 > payment consumer; this one addresses the next bottlenecks surfaced once payment was no longer
 > the limiter. Same rule as before: on merge, cut ADRs per affected service (`DR-002`). Envelope:
-> conservative — keep headroom on the 3×(2 vCPU/16 GB) nodes.
+> conservative — keep headroom on the 3 nodes (2 OCPU = 4 vCPU each; 12 vCPU / 48 GB total).
 
 ---
 
@@ -43,25 +65,38 @@ Root causes:
 
 ## 2. Decisions
 
-### 2.1 travel-cart — add a CPU HPA (REST / CPU-bound)
+### 2.1 travel-cart — add a CPU HPA (REST / CPU-bound) — ✅ IMPLEMENTED 2026-07-26
 
 travel-cart is synchronous REST with no Kafka, and the run shows it scales on CPU, so a standard
 CPU HPA is the right tool (not KEDA). Enable autoscaling and anti-affinity, matching booking:
 
 ```yaml
-# atlas-gitops/charts/atlas-service/values/travel-cart.yaml
+# deploy/helm/atlas-service/values/travel-cart.yaml
 autoscaling:
   enabled: true
-  minReplicas: 1               # lean baseline; raise to 2 for HA windows
-  maxReplicas: 4
+  minReplicas: 1                     # lean baseline; raise to 2 for HA windows
+  maxReplicas: 4                     # see the history note below
   targetCPUUtilizationPercentage: 70
 podAntiAffinity:
   enabled: true
 ```
 
-At 70 % of the 150m request with the observed CPU, this scales travel-cart to ~3–4 pods under
-peak — satisfying "≥ 3 replicas at high traffic" — and brings cart p95 back down. DB access is
-through the pooler, so extra replicas just add multiplexed connections (peak was 95/200).
+At 70 % of the 150m request with the observed CPU, this scales travel-cart out under peak —
+satisfying "≥ 3 replicas at high traffic" — and brings cart p95 back down. DB access is through
+the pooler, so extra replicas just add multiplexed connections (peak was 95/200).
+
+**`maxReplicas` history:** proposed 4 here → shipped **3** for node headroom → back to **4** on
+2026-07-26, when the first measured run found travel-cart at ~90% of its CPU *limit* with 3 pods
+(600% of request, ~900m of 1000m). A fourth replica spreads the same work to ~675m per pod, below
+the throttle point.
+
+**Worth stating plainly, because it explains why this was invisible for so long:** the absence of
+an `autoscaling` block did not mean "the HPA did not trigger". It meant **no HPA object existed**.
+`templates/hpa.yaml` renders only under `autoscaling.enabled`, and with it false
+`templates/deployment.yaml` writes a fixed `replicas: 1` — which ArgoCD's `selfHeal` then
+re-asserts, so even a manual `kubectl scale` would not have stuck. There was nothing to observe
+failing; the service simply could not scale. Recorded as
+[ADR-0030](../../docs/adr/ADR-0030-travel-cart-cpu-hpa.md).
 
 ### 2.2 inventory — keep the CPU HPA (cap max 3) + targeted concurrency
 
@@ -70,7 +105,7 @@ match the consumer parallelism we're provisioning, and add concurrency **only on
 listeners** to avoid multiplying threads across its ~12 `@KafkaListener` methods.
 
 ```yaml
-# atlas-gitops/charts/atlas-service/values/inventory.yaml
+# deploy/helm/atlas-service/values/inventory.yaml
 autoscaling:
   enabled: true
   minReplicas: 1
@@ -181,9 +216,26 @@ Success:
 
 ## 6. Follow-ups — ADRs to cut on implementation
 
-- **travel-cart-service** — add CPU HPA (hot-path REST autoscaling).
-- **inventory-service** — CPU HPA cap 3 + targeted saga-listener concurrency.
-- **booking-service / kafka-platform** — `booking.created`/`booking.confirmed` partitions 3→6.
+- ✅ **travel-cart-service** — CPU HPA (hot-path REST autoscaling) —
+  [ADR-0030](../../docs/adr/ADR-0030-travel-cart-cpu-hpa.md), `COMPLETED` 2026-07-26.
+- ⏳ **inventory-service** — CPU HPA cap 3 + targeted saga-listener concurrency
+  ([ADR-0014](../../docs/adr/ADR-0014-inventory-saga-consumer-capacity.md) is still `PENDING`).
+- ✅ **booking-service** — replica ceiling 4 → 5 after the knee moved here
+  ([ADR-0031](../../docs/adr/ADR-0031-booking-replica-ceiling.md)). §2.4 said "booking — no
+  change"; that held until travel-cart stopped throttling the flow upstream of it.
+- ⏳ **chart-wide** — right-size `requests.cpu`. Measured usage is ~6x the 150m request, which
+  pins every CPU HPA at its maximum and makes the scheduler's placement fictional. No ADR yet:
+  it needs a capacity decision across all eight services, not a per-service tweak.
+- ✅ **booking-service / kafka-platform** — `booking.created`/`booking.confirmed` partitions
+  raised (to 9, past the 6 proposed here) —
+  [ADR-0016](../../docs/adr/ADR-0016-kafka-hot-topic-partitions.md), `COMPLETED`.
+
+> Still unscaled by deliberate choice: `flight-service` and `hotel-service` stay at a fixed single
+> replica for resource reasons, even though `POST /bookings` calls them synchronously per item.
+> Note that the Redis cache does **not** cover those calls — the only `@Cacheable` in the system
+> is `usdExchangeRates` (the Frankfurter FX rate, in booking and travel-cart); `FlightPriceClient`
+> and `HotelPriceClient` are bare Feign interfaces. The residual risk is therefore availability
+> rather than throughput: restarting either interrupts price validation for every booking.
 
 ---
 

@@ -1,7 +1,12 @@
 # Experiment 02 — Inventory Contention
 
-**Category:** Correctness · **Type:** Load / concurrency · **Status:** DONE
-(pending a target resource + always-approve payment stub — see below)
+**Category:** Correctness · **Type:** Load / concurrency
+**Status:** ✅ **Runnable and passing** — 400 bookings against a 314-seat flight produced
+exactly 314 winners and **no oversell** ([`RESULTS.md`](./RESULTS.md)).
+
+> **New here? Start with [How to run](#how-to-run).** Everything above it is the *why* — the
+> mechanism under test and the hypothesis. You do not need it to execute the experiment, but
+> it is what makes the result mean something.
 
 ## Why this experiment
 
@@ -85,8 +90,8 @@ pass.
 ## Prerequisites
 
 Shared setup from the [repo README](../README.md): `k6`, `.env`, the seeded user pool,
-Grafana. Plus, specific to this experiment (see **What we need to build** below — these do
-not all exist yet):
+Grafana. Plus, specific to this experiment — [How to run](#how-to-run) walks through
+setting these up:
 
 - A **contention target**: a route/date (or city) that exposes **exactly one** in-stock
   flight/room-type, pinned via `CONTENTION_*`. Either reuse an existing seeded flight
@@ -97,14 +102,14 @@ not all exist yet):
   `deploy/platform/apps/wiremock.yaml`) so winning reservations stay `RESERVED`/`CONFIRMED`
   and the settled `reservedCount` is stable to read. If payment fails/times out it would
   *release* stock and mask the invariant we want to observe.
-- A **clean baseline**: `scripts/reset-state.sh` run before each run so the target resource
-  starts at `reservedCount = 0` (stale reservations from a prior run hold stock).
 - Reservation **TTL long enough** to outlast the burst + verification (otherwise the TTL
   sweep expires winners mid-measurement); check `ReservationExpirationProperties.ttl`.
 
-## What's built vs. still needed
+## What's built
 
-**Built (this iteration):**
+Everything needed to run the `unit` variant end to end. Kept here because it maps each
+moving part to the file that implements it — useful when a run misbehaves and you need to
+know where to look.
 
 1. ✅ **Harness single-resource "pin" mode.** `lib/k6/booking.js` →
    `resolveContentionOffer(scenario)` resolves **exactly one** offer from the
@@ -118,42 +123,131 @@ not all exist yet):
    (`reservedCount ≤ totalCapacity`) and **winners == `floor(C/q)`**, and **throws** (fails
    the run) on violation. Capacity `C` is read **live** in `setup()`, not assumed.
 
-**Still needed to actually run it:**
-
-4. ⏳ **A target resource + always-approve payment.** Point `CONTENTION_*` at a resource that
-   exposes exactly one in-stock flight/room-type, and stub payment always-approve (WireMock —
-   `deploy/platform/apps/wiremock.yaml`) so winners stay reserved and the settled count is
-   stable. Two options for the target: (a) **reuse an existing seeded flight** — `load.js`
-   reads its capacity live, so any flight works, just set `N` well above `C/q`; or (b) **seed
-   a dedicated small-capacity flight** for isolation via `POST /api/v1/flights` (needs an
-   **ADMIN** token + catalog airline/airport UUIDs; capacity flows to inventory through the
-   catalog events). A dedicated seed script is the next increment — decide (a) vs (b) first.
+4. ✅ **A target resource + always-approve payment.** Resolved by **reusing an existing
+   seeded flight** — `load.js` reads its capacity live in `setup()`, so any flight works
+   provided you set `N` well above `C/q`. The recorded run used a 314-seat flight and
+   `N=400`. Payment is stubbed always-approve via WireMock
+   (`deploy/platform/apps/wiremock.yaml`) so winners stay reserved and the settled count is
+   stable to read.
 5. ✅ **Grafana observation + custom metrics.** Inventory now exposes
    `atlas_inventory_reservations_total{result}`, `atlas_inventory_oversell_attempts_total`,
    and `atlas_inventory_units_total{action}` (ADR-0018), and a dedicated dashboard plots them
    alongside consumer lag and the k6 side. See *What to watch* below.
-6. ⏳ **Confirm reset covers it.** Verify `reset-state.sh` zeroes the inventory stock counters
-   for the target (it documents resetting inventory stock in `reset-state.md §3`); if not,
-   extend it. `load.js` guards against a dirty start (it refuses to run if the target is
-   already oversold or has no reservable stock).
+6. ✅ **A dirty-start guard.** `load.js` refuses to run if the target is already oversold or
+   has no reservable stock, so a bad starting state fails fast instead of producing a
+   misleading result.
+
+**Not yet run:** the `partial` (`Q=3`) and `deadlock` variants. See
+[`RESULTS.md`](./RESULTS.md) for what they should produce.
 
 ## How to run
 
+### 0. Load the config, and check the cluster answers
+
 ```bash
 cd experiments/02-inventory-contention
-set -a; source ../.env; set +a
 
-# point at the ONE scarce resource (a route/date that exposes exactly one in-stock flight):
-export CONTENTION_ORIGIN=LIM CONTENTION_DESTINY=CUZ CONTENTION_DATE=2026-09-01
-# (hotel instead: SCENARIO=hotel CONTENTION_CITY=Cuzco CONTENTION_DATE=…)
-# (disambiguate if several match: CONTENTION_RESOURCE_ID=<flightId|roomTypeId>)
+export LB=<ingress EXTERNAL-IP>                 # kubectl get svc -A | grep LoadBalancer
+eval "$(../scripts/cluster-credentials.sh)"     # the three secrets, read live from the cluster
+set -a; source ../.env; set +a                  # the non-secret knobs
+```
 
+Take the credentials from the cluster rather than pasting them into `.env` — see
+[Auth for load tests](../README.md#auth-for-load-tests). A `.env` with hand-copied secrets
+goes stale the moment the realm is re-imported (Keycloak regenerates the `atlas-loadtest`
+client secret), and the failure then looks like a load-test bug rather than a config drift.
+
+**If that curl does not print `200`, k6 will fail too** — as
+`Token request failed … 0 null`. Status `0` is k6's way of saying *no HTTP response arrived
+at all*, so it is a connectivity problem, never an auth one. Three things produce it, in
+rough order of likelihood:
+
+| What you see | Cause | Check |
+|---|---|---|
+| `curl` hangs, then times out | ingress or Keycloak is down — including apps deliberately idled between runs | `kubectl -n atlas-system get pods \| grep keycloak` |
+| `Could not resolve host` | the `nip.io` name isn't resolving — either `KEYCLOAK_URL` no longer matches the LoadBalancer IP (the hostname embeds it, so a redeploy silently breaks the URL), or your resolver blocks `nip.io`, which some corporate and ISP DNS does | `dig +short keycloak.$LB.nip.io` — must return `$LB` |
+| `Connection refused` | the host resolves but nothing is listening — usually the ingress controller | `kubectl get svc -A \| grep LoadBalancer` |
+
+A **401** here is a different animal entirely: Keycloak answered and rejected you. That one
+*is* auth config — wrong client secret, Direct Access Grants off, or the user pool not
+seeded. `lib/k6/auth.js` distinguishes the two cases and tells you which you have.
+
+### 1. Pick the ONE scarce resource
+
+The experiment pins every VU onto a single flight (or room type). It must resolve to
+**exactly one** in-stock resource — `load.js` refuses to guess, and fails with a clear
+message if zero or several match.
+
+Any seeded flight works: `setup()` reads its capacity `C` live from the inventory API, so
+you never hard-code it. Just make sure `N` is comfortably larger than `C/q`. Check 
+the availability for flights with the script below, pick origin/destination/departureDate from 
+ `ROUTES array` in ([config.js](../lib/k6/config.js)).
+
+> **The search endpoint is public** — `GET /api/v1/search/flights` and `/search/hotels` are
+> `permitAll` in search-service's `SecurityConfig`. No token needed for this step; you only need
+> `$ATLAS_GATEWAY`.
+
+```bash
+# Pick an origin / destination / departureDate from the ROUTES array in lib/k6/config.js.
+ORIGIN=ATH
+DESTINATION=DUB
+DATE=2027-01-02
+
+curl -sS "$ATLAS_GATEWAY/api/v1/search/flights?origin=$ORIGIN&destination=$DESTINY&departureDate=$DATE&adults=1&size=50" \
+  | jq '[.content[] | select(.available > 0) | {flightId, available, basePrice}]'
+```
+
+Read the output as a count — that is the whole question this step asks:
+
+| Result | Meaning | What to do |
+|---|---|---|
+| `[]` | no stock on that route/date | pick another `ROUTES` entry |
+| one entry | ✅ exactly what the experiment needs | export the three vars below, and set `N` well above `available` |
+| several entries | ambiguous — `load.js` refuses to guess | also export `CONTENTION_RESOURCE_ID` with one of the `flightId`s |
+
+```bash
+export CONTENTION_ORIGIN=$ORIGIN CONTENTION_DESTINY=$DESTINY CONTENTION_DATE=$DATE
+# several matched? disambiguate:
+# export CONTENTION_RESOURCE_ID=<flightId from the list above>
+```
+
+The `available` figure it prints is the capacity the burst will compete for, so use it to choose
+`N`: aim for **at least 1.5×** it, or `setup()` will refuse to start (there would be no losers,
+so nothing would test the rejection path).
+
+<details>
+<summary>Hotel target instead (<code>SCENARIO=hotel</code>)</summary>
+
+Hotels are searched by city and a stay range rather than a route, and the offers are nested one
+level deeper — a hotel per `content` entry, room types inside it:
+
+```bash
+CITY=Dublin
+CHECKIN=2027-01-02
+CHECKOUT=2027-01-04          # checkIn + SEARCH_NIGHTS
+
+curl -sS "$ATLAS_GATEWAY/api/v1/search/hotels?city=$CITY&checkIn=$CHECKIN&checkOut=$CHECKOUT&rooms=1&guests=2&size=50" \
+  | jq '[.content[] | .rooms[]? | select(.roomsAvailable > 0) | {roomTypeId, roomsAvailable, pricePerNight}]'
+
+export SCENARIO=hotel CONTENTION_CITY=$CITY CONTENTION_DATE=$CHECKIN
+# export CONTENTION_RESOURCE_ID=<roomTypeId>   # if several matched
+```
+
+`rooms` and `guests` are both `@NotNull`, same trap as `adults` on the flight side.
+</details>
+
+### 2. Fire the burst
+
+```bash
 # unit contention: N >> C, expect exactly floor(C/1) winners, the rest rejected
-k6 run -e N=100 load.js
+k6 run -e N=400 load.js
 
 # partial: q=3 units per booking
 k6 run -e N=50 -e Q=3 load.js
 ```
+
+The run **fails loudly (non-zero exit)** if the invariant breaks — you do not have to read
+the output to know whether it passed. Record what you got in [`RESULTS.md`](./RESULTS.md).
 
 Knobs (env): `N` (bookings fired at the resource), `Q` (units per booking = `q`),
 `SETTLE` (seconds to wait for the Saga before verifying, default 45), `MAX_VUS`
@@ -179,22 +273,9 @@ custom inventory meters added for this work (ADR-0018) plus the k6 side.
 ### Observability setup
 
 ```bash
-# 1. Apply the dashboard (auto-loaded by the Grafana sidecar) — one time:
-kubectl apply -f deploy/platform/observability/atlas-exp02-dashboard.yaml
-
-# 2. Grafana → folder "Atlas" → "Atlas — Experiment 02: Inventory Contention":
+# Grafana → folder "Atlas" → "Atlas — Experiment 02: Inventory Contention":
 kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80        # admin / atlas-admin
-
-# 3. (optional) stream k6's OWN metrics into the same dashboard — open a Prometheus
-#    port-forward, then run with PROM=1:
-kubectl -n atlas-observability port-forward svc/kps-kube-prometheus-stack-prometheus 9090:9090
-make -C .. run EXP=02-inventory-contention PROM=1
 ```
-
-The custom `atlas_inventory_*` meters are exposed on `/actuator/prometheus` and scraped by the
-existing PodMonitor — no scraping changes needed. The invariant read in `load.js`'s
-`teardown()` remains the authoritative pass/fail; the dashboard is for *watching it happen*
-(and for catching a transient breach the settled read can't show).
 
 ## Success criteria
 

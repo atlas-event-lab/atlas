@@ -1,7 +1,11 @@
-# Atlas — Local Quickstart
+# Atlas — Local deployment (Docker Compose)
 
-Bring up the whole platform on your machine and run a booking end to end. For Kubernetes,
-see [`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md).
+Bring up the whole platform **on your machine** and run a booking end to end — handy for
+poking the API by hand. It does **not** replace a real cluster: the load, scalability and
+resilience **experiments only run on Kubernetes** — for that, see
+[`DEPLOYMENT-RUNBOOK.md`](../DEPLOYMENT-RUNBOOK.md).
+
+> Run the commands below **from the repo root** (the `atlas/` folder).
 
 ## Prerequisites
 
@@ -9,7 +13,7 @@ see [`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md).
 - ~6 GB free RAM (Kafka + Postgres + Keycloak + 8 services + the fake provider)
 - `curl` and `jq` for the walkthrough
 - **Your Keycloak realm export** at `deploy-local/keycloak/realm-atlas.json` (identity is
-  yours — see [`deploy-local/keycloak/README.md`](./deploy-local/keycloak/README.md)). The
+  yours — see [`keycloak/README.md`](./keycloak/README.md)). The
   realm must be named `atlas`, have a Direct-Access-Grants client, and a test user.
 
 ## 1. Start the stack
@@ -27,7 +31,7 @@ What comes up: one PostgreSQL (a database per service), Kafka (KRaft), Keycloak 
 nginx **API Gateway on `http://localhost:8080`**. Service schemas are created by Flyway on
 first boot.
 
-> The published hub `docker-compose.yml` pulls prebuilt images from GHCR
+> The published `docker-compose.yml` pulls prebuilt images from GHCR
 > (`ghcr.io/atlas-event-lab/atlas-*`). To build from source instead, use the workspace
 > compose (which has `build:` contexts for each service).
 >

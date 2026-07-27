@@ -94,7 +94,7 @@ data:
         {
           "id": 1,
           "type": "row",
-          "title": "Salud \u2014 de un vistazo",
+          "title": "Health \u2014 at a glance",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -167,7 +167,7 @@ data:
         {
           "id": 3,
           "type": "stat",
-          "title": "Lag total (todos los grupos)",
+          "title": "Total lag (all groups)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -231,7 +231,7 @@ data:
         {
           "id": 4,
           "type": "stat",
-          "title": "Particiones under-replicated",
+          "title": "Under-replicated partitions",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -287,7 +287,7 @@ data:
               "instant": true
             }
           ],
-          "description": "Debe ser 0. >0 en modo 3-broker = replicaci\u00f3n en riesgo."
+          "description": "Must be 0. >0 in 3-broker mode = replication at risk."
         },
         {
           "id": 5,
@@ -352,7 +352,7 @@ data:
         {
           "id": 7,
           "type": "timeseries",
-          "title": "Lag por consumer group",
+          "title": "Lag by consumer group",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -405,12 +405,12 @@ data:
               "legendFormat": "{{consumergroup}}"
             }
           ],
-          "description": "El coraz\u00f3n: qui\u00e9n se rezaga."
+          "description": "The heart of it: who is falling behind."
         },
         {
           "id": 8,
           "type": "timeseries",
-          "title": "Segundos detr\u00e1s (staleness) por grupo",
+          "title": "Seconds behind (staleness) by group",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -463,12 +463,12 @@ data:
               "legendFormat": "{{consumergroup}}"
             }
           ],
-          "description": "lag / tasa de consumo = cu\u00e1n stale est\u00e1 cada grupo."
+          "description": "lag / consume rate = how stale each group is."
         },
         {
           "id": 9,
           "type": "table",
-          "title": "Lag por partici\u00f3n \u2014 grupo $consumergroup",
+          "title": "Lag by partition \u2014 group $consumergroup",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -526,12 +526,12 @@ data:
               "format": "table"
             }
           ],
-          "description": "Detecta skew: una partici\u00f3n caliente vs el resto."
+          "description": "Detects skew: one hot partition versus the rest."
         },
         {
           "id": 10,
           "type": "row",
-          "title": "Throughput \u2014 producido vs consumido",
+          "title": "Throughput \u2014 produced vs consumed",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -544,7 +544,7 @@ data:
         {
           "id": 11,
           "type": "timeseries",
-          "title": "Producido por t\u00f3pico (msg/s)",
+          "title": "Produced by topic (msg/s)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -601,7 +601,7 @@ data:
         {
           "id": 12,
           "type": "timeseries",
-          "title": "Consumido por grupo (msg/s)",
+          "title": "Consumed by group (msg/s)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -654,12 +654,12 @@ data:
               "legendFormat": "{{consumergroup}}"
             }
           ],
-          "description": "Si consumido < producido, el lag de ese grupo crece."
+          "description": "If consumed < produced, that group's lag grows."
         },
         {
           "id": 13,
           "type": "row",
-          "title": "Escalado \u2194 lag (correlaci\u00f3n con Kubernetes)",
+          "title": "Scaling \u2194 lag (correlated with Kubernetes)",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -672,7 +672,7 @@ data:
         {
           "id": 14,
           "type": "timeseries",
-          "title": "R\u00e9plicas por servicio (Saga)",
+          "title": "Replicas by service (Saga)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -782,7 +782,7 @@ data:
               "legendFormat": "CPU util %"
             }
           ],
-          "description": "Junto al lag de payment abajo: visualiza el desacople I/O-bound (lag alto, CPU baja)."
+          "description": "Read with payment lag below: shows the I/O-bound decoupling (high lag, low CPU)."
         },
         {
           "id": 16,
@@ -909,12 +909,12 @@ data:
               "legendFormat": "des {{horizontalpodautoscaler}}"
             }
           ],
-          "description": "Si desired>current, el HPA quiere escalar pero no puede (m\u00e9trica/recursos)."
+          "description": "If desired>current, the HPA wants to scale but cannot (metric or resources)."
         },
         {
           "id": 18,
           "type": "row",
-          "title": "DLQ y retry \u2014 anomal\u00edas",
+          "title": "DLQ and retry \u2014 anomalies",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -927,7 +927,7 @@ data:
         {
           "id": 19,
           "type": "timeseries",
-          "title": "Backlog en DLQ por t\u00f3pico (acumulado)",
+          "title": "DLQ backlog by topic (cumulative)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -980,7 +980,7 @@ data:
               "legendFormat": "{{topic}}"
             }
           ],
-          "description": "Crecimiento sostenido = anomal\u00edas reales (dlq-strategy pide alertar)."
+          "description": "Sustained growth = real anomalies (dlq-strategy requires alerting)."
         },
         {
           "id": 20,
@@ -1042,7 +1042,7 @@ data:
         {
           "id": 21,
           "type": "row",
-          "title": "T\u00f3picos y particiones",
+          "title": "Topics and partitions",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -1055,7 +1055,7 @@ data:
         {
           "id": 22,
           "type": "table",
-          "title": "Particiones por t\u00f3pico",
+          "title": "Partitions by topic",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1112,12 +1112,12 @@ data:
               "format": "table"
             }
           ],
-          "description": "T\u00f3picos calientes deben tener 3 (l\u00edmite de paralelismo de los consumers)."
+          "description": "Hot topics should have 3 (the consumer parallelism ceiling)."
         },
         {
           "id": 23,
           "type": "timeseries",
-          "title": "Tama\u00f1o del log por t\u00f3pico (mensajes retenidos)",
+          "title": "Log size by topic (retained messages)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1174,7 +1174,7 @@ data:
         {
           "id": 24,
           "type": "row",
-          "title": "Broker interno (JMX) \u2014 requiere kafka-metrics + metricsConfig",
+          "title": "Internal broker (JMX) \u2014 requires kafka-metrics + metricsConfig",
           "collapsed": false,
           "gridPos": {
             "h": 1,
@@ -1187,7 +1187,7 @@ data:
         {
           "id": 25,
           "type": "timeseries",
-          "title": "Bytes in / out por broker",
+          "title": "Bytes in / out by broker",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1252,12 +1252,12 @@ data:
               "legendFormat": "bytes out/s"
             }
           ],
-          "description": "Nombres de m\u00e9trica dependen del ruleset JMX; verifica en Prometheus tras habilitar."
+          "description": "Metric names depend on the JMX ruleset; verify in Prometheus after enabling it."
         },
         {
           "id": 26,
           "type": "timeseries",
-          "title": "Mensajes in/s (broker)",
+          "title": "Messages in/s (broker)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1314,7 +1314,7 @@ data:
         {
           "id": 27,
           "type": "timeseries",
-          "title": "Latencia de request p99 (ms)",
+          "title": "Request latency p99 (ms)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1367,7 +1367,7 @@ data:
               "legendFormat": "{{request}}"
             }
           ],
-          "description": "TotalTimeMs p99 por tipo de request."
+          "description": "TotalTimeMs p99 by request type."
         },
         {
           "id": 28,
@@ -1488,12 +1488,12 @@ data:
               "instant": true
             }
           ],
-          "description": "Debe ser 1."
+          "description": "Must be 1."
         },
         {
           "id": 30,
           "type": "timeseries",
-          "title": "Request handler idle (fracci\u00f3n, 0-1)",
+          "title": "Request handler idle (fraction, 0-1)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -1546,7 +1546,7 @@ data:
               "legendFormat": "idle"
             }
           ],
-          "description": "Cerca de 0 = broker saturado de requests."
+          "description": "Close to 0 = broker saturated with requests."
         }
       ]
     }

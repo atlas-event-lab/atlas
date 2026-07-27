@@ -152,7 +152,7 @@ Make the value environment-driven and set it to 2:
 ```
 
 ```yaml
-# atlas-gitops/.../values/payment.yaml  → config
+# deploy/helm/atlas-service/values/payment.yaml  → config
   KAFKA_CONCURRENCY: "2"
 ```
 
@@ -171,7 +171,7 @@ Constraints to respect (why 2, not more, in the conservative case):
 
 ## 4. Does it fit in 3 nodes of 2 vCPU / 16 GB? (conservative check)
 
-Cluster total ≈ 6 vCPU / 48 GB; real *allocatable* ≈ 5.6 vCPU / ~41 GB after kubelet/system
+Cluster total = **12 vCPU** / 48 GB (3 × 2 OCPU; on x86 shapes 1 OCPU = 1 physical core = 2 vCPU); real *allocatable* ≈ 10.8 vCPU / ~41 GB after kubelet/system
 reservations. That budget is already shared by observability (Prometheus/Loki/Tempo/Grafana/
 Alloy), Keycloak, the Kafka broker, Postgres (CNPG) + pooler, WireMock, ingress, and the ~7
 app services (booking and inventory scaling to 4 each in the runs).

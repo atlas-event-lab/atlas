@@ -1,0 +1,30 @@
+# Wave 3 — the CNPG Postgres Cluster `atlas-pg`. Custom health (argocd-cm) holds this app
+# Progressing until status.conditions[Ready]==True, so wave 4 (databases) waits for real Postgres
+# readiness. include picks only cluster.yaml (databases.yaml is the separate wave-4 app; the
+# create-db-secrets.sh in this folder is ignored — not a manifest).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-cluster
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/cloudnative-pg
+    directory:
+      recurse: false
+      include: 'cluster.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

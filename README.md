@@ -1,6 +1,6 @@
 <!--
   Central README for Atlas (public "front door").
-  Suggested home: a dedicated public hub repo (e.g. atlas-event-lab/atlas) or the org
+  Suggested home: a dedicated public atlas repo (e.g. atlas-event-lab/atlas) or the org
   .github profile repo. Self-contained; does not reference the private SDD /docs folder.
   Before publishing: set the real repo URLs and, ideally, add screenshots/GIFs where marked.
 -->
@@ -62,7 +62,7 @@ and run today.
   no oversell, no lost or stranded bookings.
 - **Push it under load** with k6 and watch it scale out via HPA / KEDA instead of falling over.
 - **Stand up a real cluster on your own cloud** — vendor-agnostic by design, made to ride
-  free-trial credits (Oracle OKE, GKE, EKS, AKS) and move between them.
+  free-trial credits (Oracle OKE, Civo, GKE, EKS) and move between them.
 - **Observe everything**: distributed traces threaded across the whole saga, RED metrics,
   Kafka consumer lag — all in Grafana.
 
@@ -103,7 +103,7 @@ can:
   autoscaling, cost controls (idle-down scripts), and observability wiring.
 
 The complete, ordered, vendor-agnostic guide — with a per-vendor porting table
-(OKE / GKE / EKS / AKS / local `kind`) — is in **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)**.
+(OKE / Civo / GKE / EKS / local `kind`) — is in **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)**.
 
 ---
 
@@ -173,32 +173,26 @@ Each service is an independent repository with its own CI pipeline.
 
 ---
 
-## Start here — a suggested path
+## Start here — the path
 
-1. **Skim the [diagrams](./diagrams)** — context, the saga, the state machines. ~10 minutes.
-2. **Run it locally** ([`QUICKSTART.md`](./QUICKSTART.md)) and create a booking; watch it go
-   `PENDING → INVENTORY_RESERVED → CONFIRMED`.
-3. **Break it** — replay duplicates (Exp 03) or kill a consumer mid-saga (Exp 04) and confirm
-   nothing double-charges or oversells.
-4. **Load-test it** (Exp 01) and watch it scale.
-5. **Deploy it** to a cluster on trial credits ([`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)).
-6. **Read the [ADRs](./docs/adr)** to see *why* each decision was made.
+The whole point of Atlas is to **run the experiments on a real cluster** and *see* the
+evidence in Grafana — that only happens on Kubernetes, not locally. Suggested path:
 
----
+1. **Skim the [diagrams](./diagrams)** — context, the saga, the state machines. ~10 min.
+2. **Provision a cluster and deploy the stack**, in order →
+   **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)** (Oracle OKE or Civo on trial
+   credits). This is the main path.
+3. **Make your first booking and open the dashboards** — Grafana (RED metrics, Kafka, traces
+   threaded across the saga) and the Kafka UI. The runbook's **"See it work"** section walks
+   you through it.
+4. **Run the experiments** → **[`experiments/`](./experiments)**: load-test it (Exp 01), replay
+   duplicates (Exp 03), kill a consumer mid-saga (Exp 04) — and watch it scale, heal, and never
+   oversell or double-charge, **live in Grafana**.
+5. **Read the [ADRs](./docs/adr)** to see *why* each decision was made.
 
-## Quickstart (local)
-
-```bash
-git clone https://github.com/atlas-event-lab/atlas.git
-cd atlas
-# export your Keycloak realm first (see deploy-local/keycloak/README.md)
-DB_PASSWORD=atlas docker compose up -d
-docker compose ps                 # wait until healthy
-curl http://localhost:8080/health # gateway smoke test
-```
-
-Then follow **[`QUICKSTART.md`](./QUICKSTART.md)** for a token, a catalog search, and a full
-end-to-end booking (including the failure paths).
+> **Just want to poke the API by hand, without a cluster?** There's a local Docker-Compose
+> walkthrough in [`deploy-local/LOCAL-DEPLOYMENT.md`](./deploy-local/LOCAL-DEPLOYMENT.md).
+> It's for manual API play only — the experiments need Kubernetes.
 
 ---
 

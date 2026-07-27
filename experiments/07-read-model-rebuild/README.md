@@ -14,7 +14,8 @@ currently holds*: the projection logic is deterministic and idempotent, so a reb
 only for events still in the log. All source topics are `cleanup.policy=delete`,
 `retention.ms=7d`, so full derivability beyond 7 days needs a durable replay source; the chosen
 answer is **Strategy B — republish/resync from the owning services** (that decision doc is
-[`rebuild-source-of-truth.md`](./rebuild-source-of-truth.md); productionization is ADR-0025/0026/0027).
+[`rebuild-source-of-truth.md`](./rebuild-source-of-truth.md); productionization is
+ADR-0025/0026/0027).
 
 ## Hypothesis
 
@@ -26,8 +27,8 @@ the exact pre-wipe state:
    `hotel_projections` + `hotel_room_types` match row-for-row (by natural key), same counts.
 2. **Availability converges.** `flight_projections.reserved`/`version` and every
    `room_type_availability` night (`resource_id`, `stay_date`, `capacity`, `reserved`, `version`,
-   `status`) match — the absolute+`version` model makes replay order-independent *once the catalog
-   row exists*.
+   `status`) **within the current booking horizon** match — the absolute+`version` model makes
+   replay order-independent *once the catalog row exists*.
 3. **Order matters (falsifiable control).** If availability is replayed **before** catalog, some
    updates are dropped (`applyFlightAvailability`/`applyHotelAvailability` skip when the projection
    is absent) and `reserved` does **not** converge — proving the rebuild must sequence catalog first.
@@ -36,9 +37,16 @@ Falsifiable: any projection row, `reserved`, or `version` that differs after an 
 counts that don't match; or convergence even under reversed order (which would mean the ordering
 concern is moot).
 
-> **Clock-relative calendar.** The hotel night window is materialized `today .. today+horizon`
-> (`LocalDate.now`), so the comparison is scoped to rows within the *current* horizon and the rebuild
-> is run same-day as the snapshot. This is inherent to a rolling window, not a rebuild defect.
+> **The night calendar is only partly event-derived — so the verdict is scoped to the window the
+> events determine: `[today, today + horizon)`.** Two things put rows in
+> `room_type_availability` that no replay can reproduce: `materializeHotelCalendar` anchors on
+> `LocalDate.now()` at **processing** time (the same event replayed on a different day writes
+> different nights), and `HotelProjectionRollingScheduler` mutates the table on a timer, leaving
+> up to `purge-after-days` of **past** nights behind. Both are inherent to a rolling window, not
+> rebuild defects. `runbook.sh` therefore asserts only inside the window and **reports** the rows
+> outside it as residue; a rebuild is expected to take that residue to 0. The date is pinned once
+> so a midnight rollover fails loudly instead of masquerading as divergence. Full reasoning:
+> [`derivable-scope.md`](./derivable-scope.md).
 
 ## What it does
 
@@ -77,7 +85,8 @@ cd experiments/07-read-model-rebuild
 set -a; source ../.env; set +a
 DRY_RUN=1 ./runbook.sh                    # preview, change nothing
 CONFIRM=yes ./runbook.sh                  # within-retention: wipe + ordered log replay + verify
-CONFIRM=yes CONTROL=1 ./runbook.sh        # also run the reversed-order control (expect non-convergence)
+CONFIRM=yes CONTROL=1 ./runbook.sh        # also run the reversed-order control (expect
+non-convergence)
 CONFIRM=yes REBUILD=resync ./runbook.sh   # beyond-retention: wipe + re-emit from owners + verify
 ```
 
@@ -96,6 +105,21 @@ port-forward).
 
 ## What to watch (Grafana)
 
+A dedicated dashboard ships with this experiment: **Atlas — Experiment 07: Read Model Rebuild**
+(`deploy/platform/observability/atlas-exp07-dashboard.yaml`). On the GitOps path it is installed at
+cluster bootstrap by the `obs-config` Application; otherwise apply it once:
+
+```bash
+kubectl apply -f deploy/platform/observability/atlas-exp07-dashboard.yaml
+kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80    # admin / atlas-admin
+```
+
+⚠️ search-service exposes **no domain metrics**, so unlike the other experiment dashboards this
+one cannot show convergence directly — `runbook.sh`'s checksum comparison remains the only
+authoritative pass/fail. What it does show is the rebuild happening: the per-topic lag panel
+makes the **catalog-before-availability** ordering visible, and `search_db` insert rate tracks
+the reprojection. The table below adds the rest.
+
 | Layer | Panel / query | Healthy signal |
 |-------|---------------|----------------|
 | Rebuild lag | `kafka_consumergroup_lag{consumergroup="search-service"}` | spikes to the full backlog after each offset reset, drains to 0 per phase |
@@ -104,11 +128,19 @@ port-forward).
 
 ## Success criteria
 
-- Counts of all read-model tables after the ordered rebuild equal the pre-wipe counts.
-- Semantic checksums (catalog + availability, by natural key) match BEFORE == AFTER.
+- Counts of all read-model tables after the ordered rebuild equal the pre-wipe counts —
+  `room_type_availability` **counted within `[today, today + horizon)`**, the window the events
+  determine (see the note under *Hypothesis*).
+- Semantic checksums (catalog + availability, by natural key) match BEFORE == AFTER, over the
+  same window.
 - No `reserved`/`version` drift on flights or hotel nights.
 - Control (if run): reversed order leaves `reserved` short → convergence fails, proving the
   catalog-before-availability sequencing requirement.
+
+**Reported, not asserted:** rows outside the window (past nights pending purge, per-hotel calendar
+drift). The runbook prints the count before and after; a rebuild is expected to take it to 0,
+because that state comes from maintenance jobs and processing-time anchoring rather than from the
+event log. A non-zero *after* value would be the surprising result.
 
 ## Results & decisions
 
@@ -120,3 +152,12 @@ Record runs in [`RESULTS.md`](./RESULTS.md). Decisions:
   [ADR-0026](../../docs/adr/ADR-0026-hotel-catalog-resync.md) (Hotel) /
   [ADR-0027](../../docs/adr/ADR-0027-inventory-availability-resync.md) (Inventory) — the per-owner
   resync capability (`POST /actuator/resync`), **COMPLETED**.
+- [`derivable-scope.md`](./derivable-scope.md) — the 2026-07-26 run reported a failure that was
+  not one: the rebuild produced a perfect calendar while the *live* table carried 898 rows that no
+  replay can reproduce. Establishes which part of the read model events actually determine, and
+  scopes the verdict to it.
+- [`calendar-write-path.md`](./calendar-write-path.md) — why replaying `hotel.created` was slow.
+  One catalog event materializes a year of nights, and each night cost a `SELECT` **plus** an
+  unbatched `INSERT`; batching the write path was chosen over adding partitions, which is
+  irreversible and would have broken per-hotel event ordering
+  ([ADR-0029](../../docs/adr/ADR-0029-search-calendar-write-path.md), Search).

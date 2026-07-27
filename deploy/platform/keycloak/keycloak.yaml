@@ -17,6 +17,20 @@ metadata:
   namespace: atlas-system
 spec:
   instances: 1
+  # Compute resources. The operator's own defaults set MEMORY only (1700Mi/2Gi) and leave CPU
+  # unset — which is a trap: on first start Keycloak runs a Quarkus augmentation ("Changes
+  # detected in configuration. Updating the server image."), and that build is CPU-bound. With
+  # no CPU request the scheduler places the pod without reserving any, so under contention it
+  # is starved, blows the operator's 600s startup probe, gets SIGKILLed (exit 137), and the
+  # replacement pod starts the same build from scratch — an unbounded restart loop.
+  # The request below is what keeps it off that cliff; the limit lets the build burst.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1700Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
   db:
     vendor: postgres
     host: atlas-pg-rw.atlas-data

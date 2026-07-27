@@ -1,0 +1,52 @@
+# Wave 5 — the Keycloak CR + its Ingress. After databases (wave 4) because it needs keycloak_db
+# and keycloak-db-secret. Custom health holds it Progressing until the Keycloak CR is Ready.
+#
+# The CR's spec.hostname.hostname and the Ingress host carry a <cluster-ip> placeholder that
+# bootstrap.sh Phase B patches to the live LB IP. ignoreDifferences keeps self-heal from reverting
+# that per-cluster value back to the committed placeholder. realm-import.yaml is intentionally
+# excluded — the real realm is applied by bootstrap (the repo copy is only a skeleton).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/keycloak
+    directory:
+      recurse: false
+      # realm-import.yaml ships the COMPLETE atlas realm (ADMIN role, atlas-web +
+      # atlas-loadtest clients, atlas-user + atlas-admin) with NO credentials in it —
+      # bootstrap.sh sets the passwords afterwards from secret/atlas-realm-credentials.
+      #
+      # ⚠️ CAVEAT — this app can report Synced+Healthy while the realm is stale.
+      # KeycloakRealmImport only ever CREATES realms; the operator never updates an existing
+      # one. So editing realm-import.yaml in git updates the CR, Argo goes green, the import
+      # Job runs, sees realm `atlas` already exists and does nothing. To actually apply a
+      # realm change you must delete the realm first — the exact procedure is in
+      # DEPLOYMENT-RUNBOOK.md § 5b ("Re-applying does NOT update an existing realm").
+      include: '{keycloak.yaml,keycloak-ingress.yaml,realm-import.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-system
+  ignoreDifferences:
+    - group: k8s.keycloak.org
+      kind: Keycloak
+      jsonPointers:
+        - /spec/hostname/hostname
+    - group: networking.k8s.io
+      kind: Ingress
+      jsonPointers:
+        - /spec/rules/0/host
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

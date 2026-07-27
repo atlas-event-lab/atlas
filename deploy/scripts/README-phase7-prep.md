@@ -16,7 +16,7 @@ DRY_RUN=1 ./deploy/scripts/phase7-prep.sh   # preview, changes nothing
 ## 1. Restore HPA on inventory / search
 
 During the Postgres incident these two were pinned to `replica=1` with no HPA. The gitops
-values (`atlas-gitops/charts/atlas-service/values/{inventory,search}.yaml`) already carry
+values (`deploy/helm/atlas-service/values/{inventory,search}.yaml`) already carry
 `autoscaling.enabled: true`, so the fix is just to redeploy them. The script reuses the
 **current live image tag**, so only the HPA is restored — the running image doesn't change.
 
@@ -65,7 +65,7 @@ jdbc:postgresql://atlas-pg-rw.atlas-data:5432/search_db
 jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/search_db?prepareThreshold=0
 ```
 
-Do it per service in `atlas-gitops/charts/atlas-service/values/<svc>.yaml` (the `config.DB_URL`
+Do it per service in `deploy/helm/atlas-service/values/<svc>.yaml` (the `config.DB_URL`
 key), then redeploy. **Canary with `search`** (highest read traffic, CQRS read side, no Saga
 writes) — validate the happy path, watch `cnpg_pgbouncer_*`, then roll booking / inventory /
 payment. Keycloak keeps its direct connection; don't route it through the pooler.

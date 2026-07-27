@@ -3,5 +3,7 @@ name: atlas-service
 description: Reusable chart for Atlas stateless Spring Boot microservices (1 chart, N values files).
 type: application
 version: 0.1.0
-# Default image tag; override per service/release with image.tag.
-appVersion: "0.0.1"
+# Default image tag when a service's values leave image.tag empty. Public images are
+# published to GHCR as ':latest' on every push to main, so this is what a no-CI deploy
+# pulls. Pin a specific tag per install with `--set image.tag=<tag>` for a reproducible run.
+appVersion: "latest"

@@ -1,0 +1,28 @@
+# Wave 8 — the edge Ingress (atlas-api) that path-routes /api/v1/* to the services. Path-based
+# on any host, so no per-cluster LB-host patch is needed here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: atlas-ingress
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/apps
+    directory:
+      recurse: false
+      include: 'atlas-ingress.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

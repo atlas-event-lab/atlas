@@ -31,7 +31,7 @@
 #
 # Flags:
 #   --skip-kafka       do not reset consumer group offsets
-#   --skip-quiesce     assume apps are already idle (skip apps-idle.sh / resume)
+#   --skip-quiesce     assume apps are already idle (skip ops/apps/idle.sh + resume.sh)
 #   --yes              same as CONFIRM=yes
 #
 # Prereqs: kubectl context pointing at the Atlas cluster.
@@ -46,8 +46,10 @@ KAFKA_BIN="/opt/kafka/bin/kafka-consumer-groups.sh"
 KAFKA_BOOTSTRAP="localhost:9092"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# experiments/scripts -> repo root is two levels up; ops lever lives in deploy/ops.
-OPS_DIR="${OPS_DIR:-$(cd "${SCRIPT_DIR}/../../deploy/ops" && pwd)}"
+# experiments/scripts -> repo root is two levels up; the quiesce/resume levers live in
+# deploy/ops/apps (idle.sh + resume.sh). Override OPS_DIR if you keep them elsewhere; they
+# are validated at startup by require_ops_scripts below.
+OPS_DIR="${OPS_DIR:-$(cd "${SCRIPT_DIR}/../../deploy/ops/apps" 2>/dev/null && pwd)}"
 
 DRY_RUN="${DRY_RUN:-0}"
 CONFIRM="${CONFIRM:-no}"
@@ -69,8 +71,31 @@ warn() { printf '\033[1;33m   %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
 run()  { if [[ "$DRY_RUN" == "1" ]]; then printf '   [dry-run] %s\n' "$*"; else eval "$*"; fi; }
 
+# Validate the ops levers BEFORE anything runs. This script quiesces, wipes, then resumes:
+# discovering a bad path mid-sequence is how you end up with apps scaled to 0 and no resume
+# lever to bring them back. Fail here, while nothing has been touched.
+require_ops_scripts() {
+  local missing=()
+  if [[ "$SKIP_QUIESCE" == "1" ]]; then return 0; fi   # not used in this mode
+  [[ -n "$OPS_DIR" && -d "$OPS_DIR" ]] || {
+    die "ops directory not found: '${OPS_DIR:-<unresolved>}'. Expected the quiesce/resume" \
+        "levers at deploy/ops/apps (idle.sh, resume.sh). Set OPS_DIR, or pass" \
+        "--skip-quiesce if the apps are already idle."
+  }
+  [[ -f "$OPS_DIR/idle.sh"   ]] || missing+=("idle.sh")
+  [[ -f "$OPS_DIR/resume.sh" ]] || missing+=("resume.sh")
+  if (( ${#missing[@]} )); then
+    die "missing in '$OPS_DIR': ${missing[*]}. These are the apps quiesce/resume levers" \
+        "(deploy/ops/README.md). If your tree still has the old apps-idle.sh /" \
+        "apps-resume.sh at deploy/ops, it predates the ops reorganization — update it or" \
+        "set OPS_DIR."
+  fi
+}
+
 # ── Guardrails ───────────────────────────────────────────────────────────────
 say "Guardrails"
+require_ops_scripts
+[[ "$SKIP_QUIESCE" == "1" ]] || info "ops levers: $OPS_DIR/{idle,resume}.sh"
 CTX="$(kubectl config current-context 2>/dev/null || true)"
 [[ -n "$CTX" ]] || die "no kubectl context set."
 info "kubectl context: $CTX"
@@ -124,8 +149,8 @@ psql_val() {
 
 # ── 1. Quiesce ───────────────────────────────────────────────────────────────
 if [[ "$SKIP_QUIESCE" != "1" ]]; then
-  say "1. Quiesce apps (apps-idle.sh) — scale ${APPS_NS} to 0, remove HPAs"
-  run "NS='$APPS_NS' bash '${OPS_DIR}/apps-idle.sh'"
+  say "1. Quiesce apps (ops/apps/idle.sh) — scale ${APPS_NS} to 0, remove HPAs"
+  run "NS='$APPS_NS' bash '${OPS_DIR}/idle.sh'"
   if [[ "$DRY_RUN" != "1" ]]; then
     info "waiting for app pods to terminate..."
     for _ in $(seq 1 60); do
@@ -242,8 +267,8 @@ if [[ "$DRY_RUN" != "1" ]]; then
 fi
 
 if [[ "$SKIP_QUIESCE" != "1" ]]; then
-  say "4b. Resume apps (apps-resume.sh) — restore replicas + recreate HPAs"
-  run "NS='$APPS_NS' bash '${OPS_DIR}/apps-resume.sh'"
+  say "4b. Resume apps (ops/apps/resume.sh) — restore replicas + recreate HPAs"
+  run "NS='$APPS_NS' bash '${OPS_DIR}/resume.sh'"
 else
   warn "4b. Skipping resume (--skip-quiesce): bring apps back yourself when ready."
 fi

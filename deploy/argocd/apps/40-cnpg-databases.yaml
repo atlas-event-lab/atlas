@@ -1,0 +1,28 @@
+# Wave 4 — the 9 CNPG Database CRs (one per service DB, incl. keycloak_db). Gated behind the
+# wave-3 Cluster being Ready via custom health.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-databases
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/cloudnative-pg
+    directory:
+      recurse: false
+      include: 'databases.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

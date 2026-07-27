@@ -1,0 +1,543 @@
+# Grafana dashboard — Atlas Experiment 05: Payment Timeout → Compensation (resilience).
+# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label grafana_dashboard: "1")
+# and installed at cluster bootstrap by the ArgoCD `obs-config` Application (wave 4).
+#
+# Uses only metrics that already exist:
+#   atlas_payment_provider_calls_total{outcome}   payment-service — timed_out during the window
+#   atlas_payment_recoveries_total                payment-service — MUST stay 0 here
+#   atlas_inventory_units_total{action}           inventory-service (ADR-0018) — the compensation
+#   atlas_booking_outcomes_total{state}           booking-service (ADR-0028) — EXPIRED
+#   kafka_consumergroup_lag, kube_deployment_status_replicas
+#
+# The authoritative pass/fail is still runbook.sh, which compares stock and read-model sums
+# against the pre-batch baseline. This dashboard is for WATCHING the stock come back.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-exp05-dashboard
+  namespace: atlas-observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Atlas"
+data:
+  atlas-exp05-dashboard.json: |
+    {
+      "uid": "atlas-exp05-timeout",
+      "title": "Atlas — Experiment 05: Payment Timeout → Compensation",
+      "tags": [
+        "atlas",
+        "experiment",
+        "resilience",
+        "saga",
+        "compensation"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "The verdict — did compensation complete?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Sweeper recoveries (MUST be 0)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_recoveries_total[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "0 ✓"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "The normal path (timeout → PaymentTimedOut) must resolve the stall on its own. If the ADR-0021 sweeper had to step in, some payment was left hanging in PROCESSING and the experiment fails.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Timed-out payments (this range)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_provider_calls_total{outcome=\"timed_out\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Should equal N. Each one burns the full policy: 1 attempt plus 2 retries.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Bookings EXPIRED (this range)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_booking_outcomes_total{state=\"EXPIRED\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Requires ADR-0028. Should equal N: PaymentTimedOut → BookingExpired for all of them.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Stock conservation: reserved − released",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_inventory_units_total{action=\"reserved\"}[$__range])) - sum(increase(atlas_inventory_units_total{action=\"released\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "0 ✓"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "THE proof of compensation. Everything the batch reserved must come back. 0 means inventory returned exactly to baseline; positive means stock is still held by reservations nobody released.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          }
+        },
+        {
+          "type": "row",
+          "title": "Compensation, unit by unit",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Inventory units /s — reserved vs released",
+          "targets": [
+            {
+              "expr": "sum(rate(atlas_inventory_units_total{action=\"reserved\"}[$__rate_interval]))",
+              "legendFormat": "reserved",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(atlas_inventory_units_total{action=\"released\"}[$__rate_interval]))",
+              "legendFormat": "released",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "THE panel of this experiment. The reserve curve rises first; as the timeouts start landing, the release curve chases it. The areas under both must match.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Provider outcomes /s",
+          "targets": [
+            {
+              "expr": "sum by (outcome) (rate(atlas_payment_provider_calls_total[$__rate_interval]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "During the fault window timed_out dominates. Once the scenario is restored, the post-fault smoke must return to succeeded — with no residue.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          }
+        },
+        {
+          "type": "row",
+          "title": "Drain and health",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "payment-service lag",
+          "targets": [
+            {
+              "expr": "sum(kafka_consumergroup_lag{consumergroup=\"payment-service\"})",
+              "legendFormat": "lag",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Drains SLOWLY by design: each payment burns ~19-21 s of a consumer thread (3 × 5 s timeouts plus backoff). High lag here is not a failure, it is the cost of the injected fault.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Booking outcomes /s",
+          "targets": [
+            {
+              "expr": "sum by (state) (rate(atlas_booking_outcomes_total[$__rate_interval]))",
+              "legendFormat": "{{state}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "EXPIRED during the window; CONFIRMED again in the post-restore smoke.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "payment-service replicas (KEDA on lag)",
+          "targets": [
+            {
+              "expr": "sum(kube_deployment_status_replicas{namespace=\"atlas-apps\",deployment=\"payment-service\"})",
+              "legendFormat": "replicas",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Lag grows, so KEDA scales out. Useful context: more replicas means more timeouts in parallel, not a faster drain per payment.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 17
+          }
+        }
+      ]
+    }

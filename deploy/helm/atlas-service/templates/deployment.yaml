@@ -1,3 +1,11 @@
+{{- /*
+  Two autoscalers may never own one Deployment. KEDA's admission webhook enforces this at
+  apply time ("already managed by the hpa '<release>'") — catching it here instead means the
+  contradiction never reaches the cluster, and the message says what to do.
+*/ -}}
+{{- if and .Values.autoscaling.enabled (.Values.keda).enabled -}}
+{{- fail (printf "%s: autoscaling.enabled and keda.enabled are both true. A Deployment can have only ONE autoscaler: set autoscaling.enabled=false to let the KEDA ScaledObject own the replica count (deploy/platform/keda), or keda.enabled=false to use the chart's CPU HPA." (include "atlas-service.fullname" .)) -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,7 +13,12 @@ metadata:
   labels:
     {{- include "atlas-service.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
+  {{- /*
+    Omit `replicas` when ANY autoscaler owns the count — the chart's CPU HPA, or an external
+    KEDA ScaledObject. Rendering it would make ArgoCD (selfHeal) re-assert a fixed number on
+    every sync and fight the autoscaler.
+  */}}
+  {{- if not (or .Values.autoscaling.enabled (.Values.keda).enabled) }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
@@ -70,10 +83,17 @@ spec:
             - secretRef:
                 name: {{ required "envSecret.name is required when envSecret.enabled" .Values.envSecret.name }}
             {{- end }}
-          {{- with .Values.extraEnv }}
           env:
+            # Spring profile. Declared here rather than in `config:` so a per-service values
+            # file cannot drop it by redefining that map, and so it is visible in
+            # `kubectl describe pod`. On the DEFAULT profile each service's logback-spring.xml
+            # selects the plain-text console appender; `prod` selects the JSON one
+            # (LogstashEncoder), which is what Loki parses and what SEC/OBS require.
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ .Values.springProfile | quote }}
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           # Probe strategy:
           #   tcp  = TCP check on the app port (no auth) — works while actuator sits on the
           #          secured management port (9090). Use this until actuator is moved to 8080.

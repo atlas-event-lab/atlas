@@ -5,6 +5,10 @@ image:
   repository: ghcr.io/atlas-event-lab/atlas-booking-service
   tag: ""                      # set by CI to the git-sha / release tag
 
+# booking-service does three jobs in one pod, which is why its ceiling is the highest of the
+# CPU-scaled services: it serves the synchronous REST hot path, PRODUCES to the outbox relay, and
+# CONSUMES the Saga topics (inventory.*, payment.*). The HPA only sees aggregate CPU, so REST
+# latency and consumer throughput compete for the same budget inside each pod.
 autoscaling:
   enabled: true
   minReplicas: 2

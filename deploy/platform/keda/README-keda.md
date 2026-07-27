@@ -27,8 +27,8 @@ The payment values already set `autoscaling.enabled: false` (drops the CPU HPA) 
 `keda.enabled: true` (the Deployment omits `replicas`, so GitOps/ArgoCD won't fight KEDA's HPA):
 
 ```bash
-helm upgrade --install payment-service atlas-gitops/charts/atlas-service \
-  -f atlas-gitops/charts/atlas-service/values/payment.yaml -n atlas-apps \
+helm upgrade --install payment-service deploy/helm/atlas-service \
+  -f deploy/helm/atlas-service/values/payment.yaml -n atlas-apps \
   --set image.tag=<current-live-tag>
 ```
 

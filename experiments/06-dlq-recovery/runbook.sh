@@ -31,7 +31,8 @@
 #   CONFIRM=yes ./runbook.sh                # execute (N=20 VUS=5 POISON_N=3)
 #   CONFIRM=yes N=40 VUS=8 POISON_N=5 ./runbook.sh
 #
-# Env: N (20), VUS (5), POISON_N (3), RETRY_DRAIN (200), SETTLE (300), SCENARIO, DRY_RUN, CONFIRM.
+# Env: N (20), VUS (5), ROUTES_SAMPLE (10 — routes searched in k6 setup), POISON_N (3),
+#      RETRY_DRAIN (200), SETTLE (300), SCENARIO, DRY_RUN, CONFIRM.
 # Prereqs: kubectl context on the Atlas cluster; k6; .env loaded; payment-service image with
 #          ADR-0022; uuidgen; no other load.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,6 +54,11 @@ PAYMENT_DEPLOY="payment-service"
 MGMT_PORT="9090"                             # actuator/management port (internal)
 
 N="${N:-20}"
+# Search only a SAMPLE of the ROUTES table in setup(). The full table costs one
+# search-service call per route per scenario side before a single journey runs —
+# breadth that Experiment 01 needs and this one does not: tiny batch (default N=20) — same reasoning as Experiment 05.
+# The sample is seeded (ROUTES_SEED in lib/k6/config.js), so runs stay comparable.
+ROUTES_SAMPLE="${ROUTES_SAMPLE:-10}"
 VUS="${VUS:-5}"
 POISON_N="${POISON_N:-3}"
 RETRY_DRAIN="${RETRY_DRAIN:-200}"     # ≥ 5+30+120s ladder + slack, so the batch reaches the DLQ
@@ -126,7 +132,7 @@ dlq_end_offset() {
     "$KAFKA_OFFSETS" --bootstrap-server "$KAFKA_BOOTSTRAP" --topic "$DLQ_TOPIC" 2>/dev/null \
     | awk -F: '{s+=$3} END{print s+0}'
 }
-k6_smoke() { ( cd "$LOAD_DIR" && k6 run -e ITERATIONS="$1" -e VUS="$2" load.js >"$3" 2>&1 ); }
+k6_smoke() { ( cd "$LOAD_DIR" && k6 run -e ROUTES_SAMPLE="$ROUTES_SAMPLE" -e ITERATIONS="$1" -e VUS="$2" load.js >"$3" 2>&1 ); }
 
 # DLQ replay control surface (ADR-0022) — reached over a kubectl port-forward to the payment pod's
 # internal management port (RBAC-gated via pods/portforward; never publicly exposed). curl is used
@@ -252,7 +258,7 @@ info "payment_db INSERTs on 'payments' now raise 58030 (retryable) — TX1 rolls
 
 K6_LOG="${SCRIPT_DIR}/k6-batch.log"
 if [[ "$DRY_RUN" == "1" ]]; then
-  info "[dry-run] k6 run -e ITERATIONS=$N -e VUS=$VUS ${LOAD_DIR}/load.js"
+  info "[dry-run] k6 run -e ROUTES_SAMPLE=$ROUTES_SAMPLE -e ITERATIONS=$N -e VUS=$VUS ${LOAD_DIR}/load.js"
 else
   k6_smoke "$N" "$VUS" "$K6_LOG" || warn "k6 exited non-zero — see $K6_LOG (journeys can still be valid)."
   info "batch fired (log: $K6_LOG); waiting ${RETRY_DRAIN}s for the ladder to park the triggers on the DLQ"

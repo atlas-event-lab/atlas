@@ -18,7 +18,8 @@
 #   CONFIRM=yes ./runbook.sh                # execute (N=20, VUS=5, SMOKE_N=3)
 #   CONFIRM=yes N=40 VUS=8 ./runbook.sh
 #
-# Env: N (20), VUS (5), SMOKE_N (3), SETTLE (300), SCENARIO (k6 passthrough),
+# Env: N (20), VUS (5), ROUTES_SAMPLE (10 — routes searched in k6 setup), SMOKE_N (3),
+#      SETTLE (300), SCENARIO (k6 passthrough),
 #      DRY_RUN, CONFIRM.
 # Prereqs: kubectl context on the Atlas cluster; k6; .env loaded; WireMock with the repo's
 #          payment-provider.json mappings; no other load.
@@ -38,6 +39,11 @@ PAYMENT_DEPLOY="payment-service"
 FAULT_ENV="ATLAS_PAYMENT_PROVIDER_SCENARIO"   # Spring relaxed binding → atlas.payment.provider.scenario
 
 N="${N:-20}"
+# Search only a SAMPLE of the ROUTES table in setup(). The full table costs one
+# search-service call per route per scenario side before a single journey runs —
+# breadth that Experiment 01 needs and this one does not: tiny batch (default N=20) — 10 routes is ample and cuts setup() from ~518 searches to ~20.
+# The sample is seeded (ROUTES_SEED in lib/k6/config.js), so runs stay comparable.
+ROUTES_SAMPLE="${ROUTES_SAMPLE:-10}"
 VUS="${VUS:-5}"
 SMOKE_N="${SMOKE_N:-3}"
 SETTLE="${SETTLE:-300}"
@@ -109,7 +115,7 @@ group_lag_on_topic() {
     | awk -v t="$TOPIC" '$2==t {s+=$6} END{print s+0}'
 }
 k6_smoke() { # iterations, vus, logfile
-  ( cd "$LOAD_DIR" && k6 run -e ITERATIONS="$1" -e VUS="$2" load.js >"$3" 2>&1 )
+  ( cd "$LOAD_DIR" && k6 run -e ROUTES_SAMPLE="$ROUTES_SAMPLE" -e ITERATIONS="$1" -e VUS="$2" load.js >"$3" 2>&1 )
 }
 
 # ── Clean start + BEFORE snapshot ────────────────────────────────────────────
@@ -141,7 +147,7 @@ fi
 say "2. Batch — $N journeys, $VUS parallel (every payment must TIME OUT, ~21s each)"
 K6_LOG="${SCRIPT_DIR}/k6-batch.log"
 if [[ "$DRY_RUN" == "1" ]]; then
-  info "[dry-run] k6 run -e ITERATIONS=$N -e VUS=$VUS ${LOAD_DIR}/load.js"
+  info "[dry-run] k6 run -e ROUTES_SAMPLE=$ROUTES_SAMPLE -e ITERATIONS=$N -e VUS=$VUS ${LOAD_DIR}/load.js"
 else
   k6_smoke "$N" "$VUS" "$K6_LOG" || warn "k6 exited non-zero — see $K6_LOG (journeys can still be valid)."
   info "batch fired (log: $K6_LOG)"

@@ -1,0 +1,33 @@
+# Wave 3 — Loki (log store). Multi-source: grafana/loki chart + git values. Release name `loki`
+# so the service is loki-gateway (referenced by alloy-values.yaml + loki-datasource.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: obs-loki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: atlas
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: 6.24.0
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/deploy/platform/observability/loki-values.yaml
+    - repoURL: https://github.com/atlas-event-lab/hub.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

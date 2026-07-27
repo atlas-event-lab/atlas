@@ -1,9 +1,33 @@
-# Realm import. The full realm (clients, roles, users) is YOURS — export it from the
-# temporary VM and paste it under spec.realm. Do NOT invent clients/roles here (SDD).
-#   Export:  /opt/keycloak/bin/kc.sh export --realm atlas --file atlas-realm.json
-# Then inline that JSON (as YAML) under spec.realm below, or use spec.realm.* fields.
+# Realm import — the `atlas` realm, ready to apply. Runbook Step 5b.
 #
-# Skeleton only — replace spec.realm with your exported realm definition:
+# WHAT THIS IS. A complete, importable realm: the `ADMIN` realm role, the `atlas-web`
+# client, and two users. Applying this file is the whole identity setup — no clicking
+# through the admin console.
+#
+# WHY IT IS SAFE TO COMMIT (SDD). Nothing here is invented. Every element is derived from
+# the services' own code, which is the source of truth:
+#   - `ADMIN` is the ONLY role any service checks: 18 `@PreAuthorize("hasRole('ADMIN')")`
+#     across flight/hotel/inventory/..., and no other role name appears anywhere.
+#   - It must be a REALM role, not a client role: `KeycloakRealmRoleConverter` reads
+#     `realm_access.roles` and prefixes `ROLE_`.
+#   - Every other endpoint is `.anyRequest().authenticated()`, so a plain user with no
+#     roles is enough to drive the booking saga.
+# If a service ever introduces a new role, this file MUST be updated in the same change.
+#
+# PASSWORDS ARE NOT HERE. This file defines users WITHOUT credentials; their passwords are
+# set right after the import by `set-realm-passwords.sh` (same folder), which reads them from
+# the `atlas-realm-credentials` Secret. Nothing sensitive is committed.
+#
+# Why not `spec.placeholders`? The CRD exposes it and the operator does inject the env vars,
+# but Keycloak 26.0.5 does not perform the replacement during `--import-realm` — it needs
+# `-Dkeycloak.migration.replace-placeholders=true`, which this operator version does not pass.
+# Verified on a clean import: the `${env.VAR}` string is stored as the literal password.
+# See keycloak/keycloak#33598. If you ever bump to a version where this is wired end to end,
+# placeholders become the tidier option.
+#
+# ⚠️ THE OPERATOR ONLY *CREATES* REALMS. If realm `atlas` already exists, re-applying this
+# file reports Done and changes nothing — silently. To re-import you must delete the realm
+# first (admin API), not just re-apply. Runbook Step 5b has the exact commands.
 apiVersion: k8s.keycloak.org/v2alpha1
 kind: KeycloakRealmImport
 metadata:
@@ -14,4 +38,84 @@ spec:
   realm:
     realm: atlas
     enabled: true
-    # <<< paste your exported realm here: clients, roles, scopes, etc. >>>
+
+    # The lab speaks plain HTTP: TLS is terminated at the ingress and the nip.io host has
+    # no certificate. Keycloak's default (`external`) rejects token requests arriving over
+    # HTTP from outside the cluster with "HTTPS required".
+    # >>> Put a certificate on the ingress and raise this back to `external` before this
+    # >>> cluster is reachable by anyone but you.
+    sslRequired: "none"
+    registrationAllowed: false
+
+    # ── Roles ─────────────────────────────────────────────────────────────────
+    roles:
+      realm:
+        - name: ADMIN
+          description: >-
+            Catalog administration and the reconciliation endpoints. The only role any
+            Atlas service checks (@PreAuthorize("hasRole('ADMIN')") -> realm_access.roles).
+
+    # ── Clients ───────────────────────────────────────────────────────────────
+    clients:
+      - clientId: atlas-web
+        name: Atlas web / smoke-test client
+        description: >-
+          Public client used by the runbook smoke test and the k6 experiments. Direct
+          access grants are what make `grant_type=password` work from curl.
+        enabled: true
+        publicClient: true            # no client secret -> nothing to keep out of git
+        protocol: openid-connect
+        directAccessGrantsEnabled: true
+        standardFlowEnabled: true     # browser login to the account console
+        serviceAccountsEnabled: false
+        # Lab-only wildcards: the public host is a nip.io name derived from the ingress
+        # LoadBalancer IP, which changes every time the cluster is recreated. Pin these to
+        # your real host before anyone else can reach this cluster.
+        redirectUris: ["*"]
+        webOrigins: ["*"]
+
+      - clientId: atlas-loadtest
+        name: Atlas load-test client (k6)
+        description: >-
+          Confidential client used by the k6 experiments (experiments/README.md, "Auth for
+          load tests"). Separate from atlas-web so load traffic is attributable and can be
+          disabled on its own.
+        enabled: true
+        publicClient: false           # confidential: Keycloak GENERATES the secret on import
+        protocol: openid-connect
+        directAccessGrantsEnabled: true
+        standardFlowEnabled: false    # no browser flow — token endpoint only
+        serviceAccountsEnabled: false
+        # No `secret:` field on purpose. Keycloak generates one, so nothing is committed;
+        # read it back with experiments/scripts/cluster-credentials.sh.
+
+    # ── Users ─────────────────────────────────────────────────────────────────
+    # No `credentials` block on purpose — see the header. Both users are created without a
+    # password and cannot log in until `set-realm-passwords.sh` runs. `emailVerified: true`
+    # and no `requiredActions` matter: either one would attach a required action that makes
+    # the password grant fail with `invalid_grant` until a human clears it in a browser.
+    users:
+      - username: atlas-user
+        enabled: true
+        emailVerified: true
+        email: atlas-user@example.invalid
+        firstName: Atlas
+        lastName: User
+        realmRoles: []               # deliberately none — the booking saga needs no role
+
+      - username: atlas-admin
+        enabled: true
+        emailVerified: true
+        email: atlas-admin@example.invalid
+        firstName: Atlas
+        lastName: Admin
+        realmRoles:
+          - ADMIN                    # seeds the catalog, hits the reconciliation endpoints
+#
+# DELIBERATELY NOT HERE:
+#   - The load-test user pool (`loadtest-N`). travel-cart keys one active cart per JWT
+#     subject, so the k6 harness needs one user per VU — 200 by default. They are created
+#     by experiments/scripts/seed-loadtest-users.sh, which is idempotent and re-runnable;
+#     inlining them would bloat this file for no benefit.
+#   - Any admin account for Keycloak itself. That is `temp-admin` in the `master` realm,
+#     a separate concern covered in Runbook Step 5a.

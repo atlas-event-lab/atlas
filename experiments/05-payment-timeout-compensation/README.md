@@ -95,6 +95,21 @@ modest), `VUS` (parallel journeys, default 5), `SMOKE_N` (post-restore smoke siz
 
 ## What to watch (Grafana)
 
+A dedicated dashboard ships with this experiment: **Atlas — Experiment 05: Payment Timeout →
+Compensation**
+(`deploy/platform/observability/atlas-exp05-dashboard.yaml`). On the GitOps path it is installed at
+cluster bootstrap by the `obs-config` Application; otherwise apply it once:
+
+```bash
+kubectl apply -f deploy/platform/observability/atlas-exp05-dashboard.yaml
+kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80    # admin / atlas-admin
+```
+
+The panel that matters is **Inventory units /s — reserved vs released**: the release
+curve chasing the reserve curve *is* the compensation, and the areas under the two must match.
+`atlas_payment_recoveries_total` must stay 0 — if the sweeper fired, the normal timeout path
+did not resolve the stall. The table below adds the rest.
+
 | Layer | Panel / query | Healthy signal |
 |-------|---------------|----------------|
 | Payment | `atlas_payment_provider_calls_total{outcome="timeout"}` | == N by the end of the batch (fresh pods: counters start at 0 after the fault rollout) |

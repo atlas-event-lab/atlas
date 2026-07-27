@@ -1,0 +1,35 @@
+# Wave 8 — Kafka UI + its Ingress. The Ingress host carries a <cluster-ip> placeholder patched by
+# bootstrap.sh Phase B; ignoreDifferences keeps self-heal from reverting it. The Ingress enforces
+# HTTP basic auth via the kafka-ui-basic-auth Secret (created by bootstrap Phase B) — without it
+# nginx returns 503 for this host.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka-ui
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/kafka
+    directory:
+      recurse: false
+      include: '{kafka-ui.yaml,kafka-ui-ingress.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-data
+  ignoreDifferences:
+    - group: networking.k8s.io
+      kind: Ingress
+      jsonPointers:
+        - /spec/rules/0/host
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

@@ -27,7 +27,7 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: oci-bv       # verify: kubectl get storageclass
+          # storageClassName: <name>     # omitted → cluster's DEFAULT StorageClass. Set to pin one.
           accessModes: ["ReadWriteOnce"]
           resources: { requests: { storage: 10Gi } }
 

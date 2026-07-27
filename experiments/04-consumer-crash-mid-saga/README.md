@@ -141,6 +141,20 @@ and the evidence of the kill is the new pod names/age (and the runbook's own log
 
 ## What to watch (Grafana)
 
+A dedicated dashboard ships with this experiment: **Atlas — Experiment 04: Consumer Crash mid-Saga**
+(`deploy/platform/observability/atlas-exp04-dashboard.yaml`). On the GitOps path it is installed at
+cluster bootstrap by the `obs-config` Application; otherwise apply it once:
+
+```bash
+kubectl apply -f deploy/platform/observability/atlas-exp04-dashboard.yaml
+kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80    # admin / atlas-admin
+```
+
+Watch the kill land (pods Ready → 0), then three things in order: the lag spike and its drain,
+the burst of `atlas_payment_events_skipped_total{reason="duplicate"}` as Kafka redelivers
+uncommitted offsets, and `atlas_payment_recoveries_total` climbing for the W2 bookings the
+sweeper re-drives. The table below is what each panel is checking.
+
 | Layer | Panel / query | Healthy signal |
 |-------|---------------|----------------|
 | Kafka | `kafka_consumergroup_lag{topic="inventory.reserved", consumergroup="payment-service"}` | jumps when the pods die, drains to ~0 after they return |

@@ -1,0 +1,63 @@
+# Custom Argo CD health checks for the three stateful custom resources whose readiness gates
+# the sync-wave chain. Without these, Argo treats a CNPG Cluster / Strimzi Kafka / Keycloak CR
+# as "Healthy" the moment it exists, and would race ahead to the dependent wave before Postgres,
+# Kafka or Keycloak is actually Ready — breaking the runbook's ordering.
+#
+# Applied by bootstrap.sh (Phase A, step 6) as a MERGE patch onto the Helm-managed argocd-cm,
+# so it adds these keys without clobbering the chart's config:
+#
+#   kubectl -n argocd patch configmap argocd-cm --type merge \
+#     --patch-file deploy/argocd/install/argocd-cm-health.yaml
+#
+# NOTE: a later `helm upgrade` of Argo CD re-renders argocd-cm and drops this patch — re-run the
+# patch (bootstrap is idempotent). Follow-up: fold these into `configs.cm` in argocd-values.yaml.
+#
+# All three operators expose a standard `status.conditions[type=Ready]` — one Lua body covers them.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  resource.customizations.health.postgresql.cnpg.io_Cluster: |
+    hs = {}
+    if obj.status ~= nil and obj.status.conditions ~= nil then
+      for i, c in ipairs(obj.status.conditions) do
+        if c.type == "Ready" and c.status == "True" then
+          hs.status = "Healthy"
+          hs.message = c.message or "Cluster Ready"
+          return hs
+        end
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for CNPG Cluster to become Ready"
+    return hs
+  resource.customizations.health.kafka.strimzi.io_Kafka: |
+    hs = {}
+    if obj.status ~= nil and obj.status.conditions ~= nil then
+      for i, c in ipairs(obj.status.conditions) do
+        if c.type == "Ready" and c.status == "True" then
+          hs.status = "Healthy"
+          hs.message = c.message or "Kafka Ready"
+          return hs
+        end
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for Strimzi Kafka to become Ready"
+    return hs
+  resource.customizations.health.k8s.keycloak.org_Keycloak: |
+    hs = {}
+    if obj.status ~= nil and obj.status.conditions ~= nil then
+      for i, c in ipairs(obj.status.conditions) do
+        if c.type == "Ready" and c.status == "True" then
+          hs.status = "Healthy"
+          hs.message = c.message or "Keycloak Ready"
+          return hs
+        end
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for Keycloak to become Ready"
+    return hs

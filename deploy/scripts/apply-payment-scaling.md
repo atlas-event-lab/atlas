@@ -47,8 +47,8 @@ kubectl -n keda get pods
 
 # 3b. deploy payment (or let CI do it on push to main)
 TAG="sha-$(git -C payment-service rev-parse HEAD)"
-helm upgrade --install payment-service atlas-gitops/charts/atlas-service \
-  -f atlas-gitops/charts/atlas-service/values/payment.yaml -n atlas-apps \
+helm upgrade --install payment-service deploy/helm/atlas-service \
+  -f deploy/helm/atlas-service/values/payment.yaml -n atlas-apps \
   --set image.tag="$TAG" --wait --timeout 5m
 
 # verify: CPU HPA gone, concurrency env present

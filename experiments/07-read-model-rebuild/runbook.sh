@@ -39,6 +39,10 @@ SEARCH_DEPLOY="search-service"
 SETTLE="${SETTLE:-180}"
 SCOPE="${SCOPE:-all}"
 REBUILD="${REBUILD:-offsets}"   # offsets = replay existing log (within retention); resync = re-emit from owners (ADR-0025/26/27)
+# Booking horizon in days — MUST match search-service's atlas.search.hotel.horizon-days, because
+# it defines the window the night calendar is materialized over, and therefore the window the
+# rebuild can be expected to reproduce. Override together with SEARCH_HOTEL_HORIZON_DAYS.
+HORIZON_DAYS="${HORIZON_DAYS:-365}"
 CONTROL="${CONTROL:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 CONFIRM="${CONFIRM:-no}"
@@ -96,17 +100,66 @@ psql_do()  { kubectl -n "$DATA_NS" exec -i -c postgres "$PG_PRIMARY" -- psql -U 
 
 # Semantic checksum: md5 over each row's jsonb (minus volatile columns), ordered by natural key.
 # room_type_availability also drops its random UUID PK; its natural key is (resource_id, stay_date).
+#
+# ── Why room_type_availability is compared over a WINDOW, not the whole table ────────────────
+# The night calendar is NOT purely derivable from the event log, for two reasons:
+#
+#   1. materializeHotelCalendar anchors on LocalDate.now() at PROCESSING time. A hotel whose
+#      event was consumed three days ago holds [T-3, T-3+horizon); replayed today the same event
+#      produces [T, T+horizon). Same event, different rows.
+#   2. HotelProjectionRollingScheduler mutates the table on a timer — rollHorizonForward adds
+#      frontier nights, purgePastNights only deletes nights older than purge-after-days, so the
+#      live table legitimately carries up to a week of PAST nights.
+#
+# Neither is reconstructible by replaying events, so a whole-table comparison can never pass
+# unless the dataset was created today and no maintenance job has run since. The 2026-07-26 run
+# failed on exactly this: 898 extra rows in the live table, while the rebuild produced a perfect
+# room_types x horizon calendar. See derivable-scope.md.
+#
+# So we compare the window the events DO determine: [SNAPSHOT_DATE, SNAPSHOT_DATE + horizon).
+# Rows outside it are maintenance residue, reported separately by residue_count() below.
+AVAIL_WINDOW='' # set once in snapshot_setup(), so BEFORE and AFTER use the SAME date
 table_checksum() { # table
   case "$1" in
     room_type_availability)
       psql_val "SELECT md5(coalesce(string_agg(j::text,'|' ORDER BY resource_id::text, stay_date),'')) \
-        FROM (SELECT (to_jsonb(t)-'updated_at'-'created_at'-'id') j, resource_id, stay_date FROM room_type_availability t) s;" ;;
+        FROM (SELECT (to_jsonb(t)-'updated_at'-'created_at'-'id') j, resource_id, stay_date \
+              FROM room_type_availability t WHERE ${AVAIL_WINDOW}) s;" ;;
     *)
       psql_val "SELECT md5(coalesce(string_agg(j::text,'|' ORDER BY id::text),'')) \
         FROM (SELECT (to_jsonb(t)-'updated_at'-'created_at') j, id FROM $1 t) s;" ;;
   esac
 }
-table_count() { psql_val "SELECT count(*) FROM $1;"; }
+table_count() { # table
+  case "$1" in
+    room_type_availability) psql_val "SELECT count(*) FROM room_type_availability WHERE ${AVAIL_WINDOW};" ;;
+    *)                      psql_val "SELECT count(*) FROM $1;" ;;
+  esac
+}
+
+# Rows OUTSIDE the derivable window — past nights pending purge, and any calendar drift beyond
+# the horizon. Reported, never asserted: a rebuild is expected to produce none of them.
+residue_count() { psql_val "SELECT count(*) FROM room_type_availability WHERE NOT (${AVAIL_WINDOW});"; }
+
+# Pin the comparison date ONCE. Calling CURRENT_DATE separately in the BEFORE and AFTER snapshots
+# would silently shift the window if the run crosses midnight — turning a clock tick into a
+# spurious FAIL. Read from Postgres so both snapshots share one clock.
+snapshot_setup() {
+  SNAPSHOT_DATE="$(psql_val 'SELECT CURRENT_DATE;')"
+  [[ -n "$SNAPSHOT_DATE" ]] || die "could not read CURRENT_DATE from search_db."
+  AVAIL_WINDOW="stay_date >= DATE '${SNAPSHOT_DATE}' AND stay_date < DATE '${SNAPSHOT_DATE}' + ${HORIZON_DAYS}"
+  info "comparison window: [${SNAPSHOT_DATE}, ${SNAPSHOT_DATE} + ${HORIZON_DAYS} days)"
+}
+
+# Guard the same clock assumption at the end: if the date rolled over mid-run, the rebuilt
+# calendar is anchored a day later than the snapshot and the comparison is meaningless.
+assert_same_day() {
+  local now
+  now="$(psql_val 'SELECT CURRENT_DATE;')"
+  if [[ "$now" != "$SNAPSHOT_DATE" ]]; then
+    die "the date rolled over mid-run (${SNAPSHOT_DATE} -> ${now}). The rebuilt calendar anchors on the new date, so BEFORE/AFTER are not comparable. Re-run within a single day."
+  fi
+}
 
 # Sum the log-START (earliest) offsets over the given topics. > 0 means retention has deleted old
 # segments — the full history is no longer replayable, so an offsets rebuild would be lossy.
@@ -187,12 +240,17 @@ fi
 # Parallel indexed arrays (not associative) so this runs on macOS's default Bash 3.2. Index i in
 # B_COUNT/B_SUM corresponds to TABLES[i]; flight_projections is always index 0.
 say "1. Snapshot BEFORE (read model ground truth)"
-B_COUNT=(); B_SUM=()
+snapshot_setup   # pins SNAPSHOT_DATE + AVAIL_WINDOW for BOTH snapshots
+B_COUNT=(); B_SUM=(); B_RESIDUE=0
 for t in "${TABLES[@]}"; do
   c="$(table_count "$t")"; s="$(table_checksum "$t")"
   B_COUNT+=("$c"); B_SUM+=("$s")
   info "$t: rows=$c sum=${s:0:12}"
 done
+if [[ " ${TABLES[*]} " == *" room_type_availability "* ]]; then
+  B_RESIDUE="$(residue_count)"
+  info "room_type_availability outside the window: ${B_RESIDUE} row(s) — maintenance residue, not asserted"
+fi
 
 # ── Preflight (offsets mode): the log MUST still hold full history, or the wipe is unrecoverable ──
 # This guard is why the destructive TRUNCATE is safe: if any catalog event has aged out of the 7-day
@@ -251,6 +309,7 @@ fi
 
 # ── 6. Snapshot AFTER + verdict ──────────────────────────────────────────────
 say "6. Snapshot AFTER + verdict"
+assert_same_day   # a midnight rollover re-anchors the calendar; fail loudly instead of blaming the rebuild
 FAIL=0
 i=0
 for t in "${TABLES[@]}"; do
@@ -263,11 +322,18 @@ for t in "${TABLES[@]}"; do
   i=$((i + 1))
 done
 
+# Residue is REPORTED, never asserted. A rebuild materializes only the current window, so it is
+# expected to drop to 0 — that is not a defect, it is the maintenance state being non-derivable.
+if [[ " ${TABLES[*]} " == *" room_type_availability "* ]]; then
+  A_RESIDUE="$(residue_count)"
+  info "room_type_availability outside the window: ${B_RESIDUE} -> ${A_RESIDUE} (expected to drop to 0; not part of the verdict)"
+fi
+
 echo
 if [[ "$FAIL" -eq 0 ]]; then
-  ok "Experiment 07 PASSED — the read model rebuilt to an identical state from the event log (within retention)."
+  ok "Experiment 07 PASSED — within [${SNAPSHOT_DATE}, +${HORIZON_DAYS}d) the read model rebuilt to an identical state from the event log (within retention)."
 else
-  die "Experiment 07 FAILED — the rebuilt read model diverged. Investigate (ordering? stale events? clock horizon?)."
+  die "Experiment 07 FAILED — the rebuilt read model diverged inside the derivable window. Investigate (ordering? stale events? availability topics aged out of retention?)."
 fi
 
 # ── Optional control: reversed order should NOT converge (offsets mode only) ──

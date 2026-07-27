@@ -59,7 +59,7 @@ OpenAPI paths (never invent endpoints here).
 
 ## Where this lives
 
-The nginx config ships with the local compose stack (hub repo); the Ingress manifest ships
+The nginx config ships with the local compose stack (atlas repo); the Ingress manifest ships
 with the infra/GitOps repo. The gateway is not a standalone Java service repo.
 
 ## License

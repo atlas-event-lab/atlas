@@ -1,0 +1,557 @@
+# Grafana dashboard — Atlas Experiment 06: DLQ Recovery (resilience).
+# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label grafana_dashboard: "1")
+# and installed at cluster bootstrap by the ArgoCD `obs-config` Application (wave 4).
+#
+# Uses only metrics that already exist:
+#   atlas_payment_dlq_parked_total{reason}        payment-service (ADR-0022) validation | retries_exhausted
+#   atlas_payment_dlq_replayed_total{outcome}     payment-service (ADR-0022) reprocessed | quarantined
+#   atlas_payment_provider_calls_total{outcome}   payment-service — exactly one charge per replay
+#   atlas_payment_recoveries_total                payment-service — MUST stay 0 here
+#   atlas_booking_outcomes_total{state}           booking-service (ADR-0028)
+#   kafka_consumergroup_lag
+#
+# NOTE: runbook.sh aborts if the deployed image does not expose the ADR-0022 DLQ meters, since
+# its assertions depend on them. If those panels are empty, that is the same root cause.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-exp06-dashboard
+  namespace: atlas-observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Atlas"
+data:
+  atlas-exp06-dashboard.json: |
+    {
+      "uid": "atlas-exp06-dlq",
+      "title": "Atlas — Experiment 06: DLQ Recovery",
+      "tags": [
+        "atlas",
+        "experiment",
+        "resilience",
+        "dlq",
+        "payment"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "The verdict — was only the recoverable recovered?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Parked — poison (validation)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_dlq_parked_total{reason=\"validation\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "red"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Malformed envelopes. These must park IMMEDIATELY, without burning the retry ladder: the error is not retryable.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 5,
+            "x": 0,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Parked — retries exhausted",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_dlq_parked_total{reason=\"retries_exhausted\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Transient failures that used up all 4 attempts (5s → 30s → 120s). These ARE recoverable by replay.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 5,
+            "x": 5,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Replay — reprocessed",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_dlq_replayed_total{outcome=\"reprocessed\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "green"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Must equal the retries-exhausted count: what was recoverable got recovered.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 5,
+            "x": 10,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Replay — quarantined",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_dlq_replayed_total{outcome=\"quarantined\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "purple"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Must equal the poison count. A malformed record that 'succeeds' on replay would falsify the experiment.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 5,
+            "x": 15,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Sweeper recoveries (MUST be 0)",
+          "targets": [
+            {
+              "expr": "sum(increase(atlas_payment_recoveries_total[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "0 ✓"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "What settles these bookings must be the DLQ replay, not the recovery sweeper. If this is > 0 you cannot tell which of the two mechanisms did the work.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          }
+        },
+        {
+          "type": "row",
+          "title": "Parking and replay over time",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Parked /s by reason",
+          "targets": [
+            {
+              "expr": "sum by (reason) (rate(atlas_payment_dlq_parked_total[$__rate_interval]))",
+              "legendFormat": "{{reason}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Watch the TIME GAP: validation parks instantly, retries_exhausted only shows up minutes later, after the retry ladder. Seeing that separation IS hypothesis 1.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Replay /s by outcome",
+          "targets": [
+            {
+              "expr": "sum by (outcome) (rate(atlas_payment_dlq_replayed_total[$__rate_interval]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Starts when the DLT handler is started. reprocessed and quarantined must separate cleanly by record type.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          }
+        },
+        {
+          "type": "row",
+          "title": "No double charge, no blocked partition",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Provider calls /s by outcome",
+          "targets": [
+            {
+              "expr": "sum by (outcome) (rate(atlas_payment_provider_calls_total[$__rate_interval]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "During replay this must rise by exactly one charge per reprocessed booking. A 2x spike would mean the Idempotency-Key did not protect.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "payment-service group lag",
+          "targets": [
+            {
+              "expr": "sum(kafka_consumergroup_lag{consumergroup=\"payment-service\"})",
+              "legendFormat": "inventory.reserved lag",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Hypothesis 1 says poison does NOT block the partition: healthy events keep processing, so this lag must not sit flat and high while poisoned messages are present.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Booking outcomes /s",
+          "targets": [
+            {
+              "expr": "sum by (state) (rate(atlas_booking_outcomes_total[$__rate_interval]))",
+              "legendFormat": "{{state}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "normal"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "Requires ADR-0028. Retry-exhausted bookings may only reach a terminal state AFTER the replay — before that they sit in INVENTORY_RESERVED and therefore do not appear here.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 17
+          }
+        }
+      ]
+    }

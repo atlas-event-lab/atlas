@@ -1,0 +1,42 @@
+# Helm values for Argo CD (chart: argo/argo-cd, https://argoproj.github.io/argo-helm).
+# Installed once by bootstrap.sh (Phase A) — Argo CD is NOT self-managed as an Application.
+#
+#   helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
+#   helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace \
+#     --version <pinned> -f deploy/argocd/install/argocd-values.yaml
+#
+# The UI is fronted by the same ingress-nginx LoadBalancer as the rest of the stack, so
+# argocd-server runs in HTTP (insecure) mode and TLS is terminated at the edge. The ingress
+# host carries a <cluster-ip> placeholder that bootstrap.sh Phase B patches to the real LB IP
+# (the LB only exists after Argo has synced the wave-1 ingress-nginx app).
+
+global:
+  # Keep the footprint small for a single-node learning cluster.
+  domain: argocd.<cluster-ip>.nip.io
+
+configs:
+  params:
+    # Ingress terminates TLS; talk plain HTTP to argocd-server (no self-signed cert hop).
+    server.insecure: true
+  rbac:
+    # v1: keep the built-in local `admin` account (password printed by bootstrap). Everyone
+    # else is read-only so the UI can be shared for the "watch it converge" demo safely.
+    policy.default: role:readonly
+    # policy.csv:  add SSO/role bindings here for a real multi-user setup (follow-up).
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    # Patched to argocd.<LB-IP>.nip.io by bootstrap.sh Phase B (step 10).
+    hostname: argocd.<cluster-ip>.nip.io
+    tls: false
+  # Modest resources — this is a control plane for a lab, not production.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# Repo-server needs Helm + Git; defaults are fine. Redis/ApplicationSet controller ship enabled.
+applicationSet:
+  enabled: true

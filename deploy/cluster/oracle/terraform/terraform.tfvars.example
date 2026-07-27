@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars and fill in YOUR values. terraform.tfvars is gitignored.
+# Find OCIDs in the OCI Console (Identity → Compartments / Tenancy details) or via:
+#   oci iam compartment list --query 'data[].{name:name,id:id}' --output table
+
+compartment_id      = "ocid1.compartment.oc1..xxxxxxxx"
+tenancy_id          = "ocid1.tenancy.oc1..xxxxxxxx"
+region              = "us-ashburn-1"
+home_region         = "us-ashburn-1"
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# Optional overrides (defaults reproduce the reference cluster):
+# cluster_name       = "atlas-oke"
+# kubernetes_version = "v1.34.2"
+# worker_count       = 3
+# worker_ocpus       = 2      # 1 OCPU = 2 vCPU -> 4 vCPU/node
+# worker_memory_gb   = 16
+
+# If `terraform plan` fails resolving the worker image (empty node-pool sources), set the
+# OKE node-image OCID explicitly. Find it (pick the OKE-<version> x86_64 non-GPU entry):
+#   oci ce node-pool-options get --node-pool-option-id all --query 'data.sources' --output table
+# worker_image_id = "ocid1.image.oc1.iad.aaaaaaaa..."

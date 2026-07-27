@@ -16,10 +16,10 @@ Export your `atlas` realm and save it here as `realm-atlas.json`:
 The compose mounts this folder at `/opt/keycloak/data/import` and Keycloak starts with
 `--import-realm`, so the realm is created on first boot.
 
-## What the realm must contain for the QUICKSTART
+## What the realm must contain
 
 - realm name **`atlas`** (the services validate `iss = .../realms/atlas`).
-- a client the QUICKSTART can use with **Direct Access Grants** (password grant) enabled —
+- a client for the walkthrough with **Direct Access Grants** (password grant) enabled —
   e.g. a public `atlas-web` client, or a confidential `atlas-loadtest` client + secret.
 - at least one **test user** with a known password.
 

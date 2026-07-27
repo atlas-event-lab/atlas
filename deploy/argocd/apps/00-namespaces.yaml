@@ -1,0 +1,28 @@
+# Wave 0 — the four Atlas namespaces (atlas-system/data/apps/observability). Everything else
+# lands in these (or in cnpg-system/keda created via CreateNamespace=true).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: namespaces
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform
+    directory:
+      recurse: false
+      include: '00-namespaces.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

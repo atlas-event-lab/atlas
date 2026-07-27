@@ -1,0 +1,463 @@
+# Grafana dashboard — Atlas Experiment 07: Read Model Rebuild (CQRS derivability).
+# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label grafana_dashboard: "1")
+# and installed at cluster bootstrap by the ArgoCD `obs-config` Application (wave 4).
+#
+# CAVEAT, read this first: search-service exposes NO domain metrics of its own, so unlike the
+# other experiment dashboards this one cannot show the invariant directly. Convergence is
+# proved by runbook.sh, which checksums the semantic columns of every read-model table before
+# and after — that comparison remains the ONLY authoritative pass/fail.
+#
+# What this dashboard does give you is the rebuild happening, from existing signals:
+#   kafka_consumergroup_lag / _current_offset{consumergroup="search-service"}   the ordered replay
+#   cnpg_pg_stat_database_tup_{inserted,updated,deleted}{datname="search_db"}   the reprojection
+#   kube_deployment_status_replicas                                            quiesce -> resume
+#   http_server_requests_seconds_count{job="search-service"}                    still serving?
+#
+# The per-topic lag panel is the interesting one: catalog must drain before availability.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-exp07-dashboard
+  namespace: atlas-observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Atlas"
+data:
+  atlas-exp07-dashboard.json: |
+    {
+      "uid": "atlas-exp07-rebuild",
+      "title": "Atlas — Experiment 07: Read Model Rebuild",
+      "tags": [
+        "atlas",
+        "experiment",
+        "architecture",
+        "cqrs",
+        "search"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "Rebuild status",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "type": "stat",
+          "title": "search-service replicas",
+          "targets": [
+            {
+              "expr": "sum(kube_deployment_status_replicas{namespace=\"atlas-apps\",deployment=\"search-service\"})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "blue"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "The runbook scales to 0 so offsets can be reset (a group with active members refuses them), then scales back up for the replay. This panel marks the phases.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Total search-service group lag",
+          "targets": [
+            {
+              "expr": "sum(kafka_consumergroup_lag{consumergroup=\"search-service\"})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "orange"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Jumps on the reset to earliest and must drain to 0. That drain IS the reprojection.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Rows inserted into search_db (this range)",
+          "targets": [
+            {
+              "expr": "sum(increase(cnpg_pg_stat_database_tup_inserted{datname=\"search_db\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "green"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "Direct proxy for the read model being rebuilt. After the TRUNCATE it should spike, then flatten as it converges.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Rows deleted from search_db (this range)",
+          "targets": [
+            {
+              "expr": "sum(increase(cnpg_pg_stat_database_tup_deleted{datname=\"search_db\"}[$__range]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "red"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "description": "The wipe's TRUNCATE. Seeing it confirms the rebuild started from zero rather than from leftover state.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          }
+        },
+        {
+          "type": "row",
+          "title": "Order matters — catalog before availability",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Lag by topic for the search-service group",
+          "targets": [
+            {
+              "expr": "sum by (topic) (kafka_consumergroup_lag{consumergroup=\"search-service\"})",
+              "legendFormat": "{{topic}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "THE panel of this experiment. The ordered replay resets CATALOG topics to earliest and AVAILABILITY topics to latest, so you should see catalog drain first and availability only afterwards. If both drain at once the ordering was not respected, and applyFlightAvailability will drop updates for projections that do not exist yet — which is exactly the falsifiable control in hypothesis 3.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Current offset by topic",
+          "targets": [
+            {
+              "expr": "sum by (topic) (kafka_consumergroup_current_offset{consumergroup=\"search-service\"})",
+              "legendFormat": "{{topic}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "The reset shows up as an offset dropping (to earliest) or jumping (to latest). Visual confirmation that the offset reset hit the topics it was meant to.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          }
+        },
+        {
+          "type": "row",
+          "title": "Reprojection progress",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 17
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "search_db writes /s",
+          "targets": [
+            {
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted{datname=\"search_db\"}[$__rate_interval]))",
+              "legendFormat": "inserted/s",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_updated{datname=\"search_db\"}[$__rate_interval]))",
+              "legendFormat": "updated/s",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted{datname=\"search_db\"}[$__rate_interval]))",
+              "legendFormat": "deleted/s",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "The shape of the rebuild: a burst of inserts while catalog replays, then updates as availability is applied onto the projections that now exist.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "search-service — still serving? (RED)",
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"search-service\"}[$__rate_interval]))",
+              "legendFormat": "requests/s",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=\"search-service\",status=~\"5..\"}[$__rate_interval]))",
+              "legendFormat": "5xx/s",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "stacking": {
+                  "mode": "none"
+                }
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "description": "During the wipe search returns empty results, not errors: the read model is empty but the service is healthy. A spike of 5xx here would be something else.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          }
+        }
+      ]
+    }

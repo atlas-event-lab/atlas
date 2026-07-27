@@ -1,0 +1,30 @@
+# app-of-apps ROOT. Applied once by bootstrap.sh (Phase A, step 7). It watches
+# deploy/argocd/apps/ and creates every child Application found there (recurse). Each child
+# carries its own argocd.argoproj.io/sync-wave, so Argo brings the whole stack up wave by wave.
+#
+# Repo naming: the GitHub remote is github.com/atlas-event-lab/hub.git (the local folder is
+# atlas/). If the repo is renamed to `atlas`, update repoURL here and in every apps/*.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: atlas-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/argocd/apps
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

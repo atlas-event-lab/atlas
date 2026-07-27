@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# cluster-down.sh — scale the OKE node pool to 0 to STOP paying for worker compute.
+# ops/oracle/cluster-down.sh — Oracle OKE only. Scale the node pool to 0 to STOP paying
+# for worker compute.
 #
 # This is the real credit-saver: OCI bills worker nodes while they are RUNNING,
 # regardless of how many pods sit on them. Scaling replicas frees memory but saves
@@ -10,8 +11,13 @@
 # billing a small amount; do NOT delete the LB (its IP is pinned in the Keycloak issuer).
 set -euo pipefail
 
-# OCIDs for this cluster (override via env if they change).
-NODEPOOL_OCID="${NODEPOOL_OCID:-ocid1.nodepool.oc1.iad.aaaaaaaab5ki4j7n7vwogptofq3po343re2h7ftilv3d3eir7nka6nhv6iwa}"
+# Config: NODEPOOL_OCID must be YOUR node pool. Provide it via the environment or a
+# gitignored config.env next to this script (see config.env.example). No value is
+# hardcoded on purpose — these scripts are reproducible on any tenancy.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "$SCRIPT_DIR/config.env" ] && . "$SCRIPT_DIR/config.env"
+NODEPOOL_OCID="${NODEPOOL_OCID:-}"
+[ -n "$NODEPOOL_OCID" ] || { echo "ERROR: NODEPOOL_OCID is not set. Export it or set it in $SCRIPT_DIR/config.env (see config.env.example)." >&2; exit 1; }
 
 echo ">> Scaling node pool to 0 (workers terminate in ~1-2 min)..."
 oci ce node-pool update --node-pool-id "$NODEPOOL_OCID" --size 0 --force

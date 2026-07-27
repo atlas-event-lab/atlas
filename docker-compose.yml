@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Atlas — full LOCAL stack (published hub, prebuilt images).
+# Atlas — full LOCAL stack (prebuilt images).
 #
 # Runs everything on your machine from prebuilt GHCR images: Postgres, Kafka (KRaft),
 # Keycloak, Redis, the fake payment provider (WireMock), the nginx gateway, and all

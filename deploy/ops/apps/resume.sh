@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# apps-resume.sh — bring the business apps back after apps-idle.sh by re-running
+# ops/apps/resume.sh — bring the business apps back after idle.sh by re-running
 # helm upgrade per service. This restores replicas + recreates the HPAs, and reapplies
 # the current chart defaults (metrics, prod profile, probes). Each service keeps the
 # image tag it was last running (read off the live Deployment) so we never revert to 0.0.1.
 #
-# KEDA-aware: apps-idle.sh pins KEDA-scaled workloads (payment, wiremock) to 0 with the
+# KEDA-aware: idle.sh pins KEDA-scaled workloads (payment, wiremock) to 0 with the
 # `autoscaling.keda.sh/paused-replicas` annotation. This script removes that pin so KEDA
 # recreates its HPA and takes back ownership of their replica count. Deployments owned by a
 # KEDA ScaledObject are NOT manually scaled here (that would fight KEDA).
 set -euo pipefail
 NS="${NS:-atlas-apps}"
-CHART_DIR="${CHART_DIR:-$(cd "$(dirname "$0")/../../atlas-gitops/charts/atlas-service" && pwd)}"
+# Default to the self-contained chart in this repo (deploy/helm/atlas-service). Override
+# CHART_DIR to point at the GitOps mirror if you deploy from there instead.
+CHART_DIR="${CHART_DIR:-$(cd "$(dirname "$0")/../../helm/atlas-service" && pwd)}"
 
 cd "$CHART_DIR"
 for s in user flight hotel inventory travel-cart booking payment search; do
@@ -21,7 +23,7 @@ for s in user flight hotel inventory travel-cart booking payment search; do
     ${TAG:+--set image.tag="$TAG"}
 done
 
-# Non-helm deployments (wiremock) — apps-idle.sh's `scale deploy --all --replicas=0` took it down
+# Non-helm deployments (wiremock) — idle.sh's `scale deploy --all --replicas=0` took it down
 # too. Without it, payment-service's provider calls hang/timeout. Only nudge it to 1 if it is NOT
 # KEDA-managed; if a ScaledObject owns it, KEDA restores the count once un-paused below.
 for extra in wiremock; do
@@ -35,7 +37,7 @@ for extra in wiremock; do
   fi
 done
 
-# KEDA: remove the paused pin apps-idle.sh set, so KEDA recreates its HPA and takes back the
+# KEDA: remove the paused pin idle.sh set, so KEDA recreates its HPA and takes back the
 # replica count (payment, wiremock). The ScaledObjects themselves are applied during rollout
 # (deploy/platform/keda), not here — this only lifts the pause on whatever exists.
 if kubectl -n "$NS" get scaledobject >/dev/null 2>&1; then
@@ -44,7 +46,7 @@ if kubectl -n "$NS" get scaledobject >/dev/null 2>&1; then
 fi
 
 # CPU-HPA services (autoscaling.enabled) render WITHOUT spec.replicas — the HPA owns the count.
-# apps-idle.sh scaled them to 0, and an HPA will NOT lift a Deployment off 0 replicas (it can't
+# idle.sh scaled them to 0, and an HPA will NOT lift a Deployment off 0 replicas (it can't
 # read per-pod metrics with 0 pods), so the helm upgrade above leaves them stuck at 0. Nudge each
 # CPU-HPA-managed Deployment up to its HPA minReplicas. Skip KEDA HPAs (keda-hpa-*) — KEDA already
 # took those over via the un-pause above.

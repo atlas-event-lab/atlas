@@ -1,0 +1,33 @@
+# Wave 3 — Tempo (trace store + metrics-generator). Multi-source: grafana/tempo chart + git
+# values. Release name `tempo` so apps push to tempo.atlas-observability:4318.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: obs-tempo
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: atlas
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: tempo
+      targetRevision: 1.18.2
+      helm:
+        releaseName: tempo
+        valueFiles:
+          - $values/deploy/platform/observability/tempo-values.yaml
+    - repoURL: https://github.com/atlas-event-lab/hub.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

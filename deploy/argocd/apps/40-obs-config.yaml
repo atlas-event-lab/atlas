@@ -1,0 +1,32 @@
+# Wave 4 — Grafana datasources (Loki, Tempo) + every provisioned Atlas dashboard: RED, Kafka,
+# CNPG, and one per experiment (exp01, exp02, exp04–exp07). The Grafana sidecar auto-loads these
+# ConfigMaps. `include` is a GLOB, not a list, so dropping a new atlas-*-dashboard.yaml into
+# deploy/platform/observability installs it on the next sync with no change here — which is why
+# the experiment dashboards are part of cluster bootstrap rather than a manual step.
+# It skips the *-values.yaml helm files, cnpg-dashboard.json (the raw export) and the README.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: obs-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/observability
+    directory:
+      recurse: false
+      include: '{*-datasource.yaml,*-dashboard.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true
