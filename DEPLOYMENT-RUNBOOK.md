@@ -212,11 +212,13 @@ kubectl apply -n atlas-system \
 kubectl apply -n atlas-system \
   -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/$V/kubernetes/kubernetes.yml
 
-# Keycloak CR + its Ingress. BOTH manifests carry a literal `<cluster-ip>` placeholder;
-# substituting it in the pipe (not with `sed -i`) keeps the public IP out of git.
+# Keycloak CR + its Ingress. BOTH manifests carry a literal `0.0.0.0` placeholder host — a
+# valid RFC 1123 stand-in so the GitOps path can apply them unedited (Kubernetes rejects the
+# old `<cluster-ip>` sentinel). Substituting it in the pipe (not with `sed -i`) keeps the
+# public IP out of git. `0.0.0.0` appears only in the host line, so the swap is exact.
 LB=<EXTERNAL-IP>          # the ingress-nginx EXTERNAL-IP from Step 2
-sed "s/<cluster-ip>/$LB/g" deploy/platform/keycloak/keycloak.yaml         | kubectl apply -f -
-sed "s/<cluster-ip>/$LB/g" deploy/platform/keycloak/keycloak-ingress.yaml | kubectl apply -f -
+sed "s/0.0.0.0/$LB/g" deploy/platform/keycloak/keycloak.yaml         | kubectl apply -f -
+sed "s/0.0.0.0/$LB/g" deploy/platform/keycloak/keycloak-ingress.yaml | kubectl apply -f -
 
 kubectl wait --for=condition=Ready keycloak/keycloak -n atlas-system --timeout=600s
 
@@ -519,14 +521,14 @@ Follow it end to end, then come back here.
 > and re-run the node-health check from Step 0.
 
 **Kafka UI** — inspect topics, consumer groups and lag. Its Ingress carries the same
-`<cluster-ip>` placeholder as the Keycloak manifests in Step 5, so substitute it the same way:
+`0.0.0.0` placeholder host as the Keycloak manifests in Step 5, so substitute it the same way:
 
 ```bash
 kubectl apply -f deploy/platform/kafka/kafka-ui.yaml
 kubectl -n atlas-data rollout status deploy/kafka-ui
 
 LB=<EXTERNAL-IP>          # same value as Step 5
-sed "s/<cluster-ip>/$LB/g" deploy/platform/kafka/kafka-ui-ingress.yaml | kubectl apply -f -
+sed "s/0.0.0.0/$LB/g" deploy/platform/kafka/kafka-ui-ingress.yaml | kubectl apply -f -
 # -> http://kafka.$LB.nip.io   (no port-forward needed)
 ```
 
@@ -758,7 +760,7 @@ transported, consumed, projected — all four in one command's worth of conseque
 - [ ] `cluster/atlas-pg` is `Ready`; `kubectl get database -n atlas-data` lists all DBs.
 - [ ] `kafka/atlas` is `Ready`; `kubectl get kafkatopic -n atlas-data` lists the topics.
 - [ ] `kubectl get ingress -n atlas-system` shows the `keycloak` Ingress with the real IP
-      in its host (no literal `<cluster-ip>`), and
+      in its host (no literal `0.0.0.0`), and
       `curl -sI http://keycloak.<LB-IP>.nip.io/realms/atlas/.well-known/openid-configuration`
       returns `200`.
 - [ ] Keycloak `Ready` and `/realms/atlas` reachable in-cluster.
