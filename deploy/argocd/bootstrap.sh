@@ -83,7 +83,7 @@ ensure_ingress_webhook_ready() {  # [timeout_s]
   while [[ -z "$(kubectl get validatingwebhookconfiguration "$wh" \
         -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null)" ]]; do
     if (( waited >= timeout )); then
-      local ca; ca="$(kubectl -n atlas-system get secret "$wh" -o jsonpath='{.data.ca}' 2>/dev/null)"
+      local ca; ca="$(kubectl -n atlas-system get secret "$wh" -o jsonpath='{.data.ca}' 2>/dev/null || true)"
       [[ -z "$ca" ]] && { warn "ingress webhook caBundle empty and no admission Secret — Ingress patches may fail"; return 0; }
       kubectl patch validatingwebhookconfiguration "$wh" --type json \
         -p "[{\"op\":\"replace\",\"path\":\"/webhooks/0/clientConfig/caBundle\",\"value\":\"$ca\"}]" >/dev/null

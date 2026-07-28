@@ -115,7 +115,7 @@ sweep_orphaned_volumes() {
   fi
   local region net id
   region="$(grep -E '^[[:space:]]*region' "$TF_DIR/terraform.tfvars" 2>/dev/null \
-            | sed -E 's/.*=[[:space:]]*"?([A-Za-z0-9]+)"?.*/\1/' | tr '[:upper:]' '[:lower:]')"
+            | sed -E 's/.*=[[:space:]]*"?([A-Za-z0-9]+)"?.*/\1/' | tr '[:upper:]' '[:lower:]' || true)"
   [ -z "$region" ] && region="$(civo region current 2>/dev/null || true)"
   net="${CLUSTER_NAME}-net"
   log "Sweeping orphaned volumes on network '${net}' (region '${region:-?}')..."

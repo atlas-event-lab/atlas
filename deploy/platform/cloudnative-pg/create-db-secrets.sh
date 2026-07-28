@@ -30,8 +30,14 @@ make_secret() {
   # password on a secret-only change — so a re-run would leave the Postgres role on the OLD
   # password while the services (and this secret) move to the NEW one → `password authentication
   # failed for user "<svc>_user"` across the stack. Keep it stable. See TS-PLATFORM-09.
-  local pw
-  pw="$(kubectl -n "${namespaces[0]}" get secret "$secret" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)"
+  # Look up any existing password inside an `if` guard: on a FRESH cluster the secret does not
+  # exist, so `kubectl get` exits non-zero — and under `set -euo pipefail` that would abort the
+  # whole script (a bare `pw="$(kubectl … | base64)"` propagates the failure). The guard keeps a
+  # missing secret from being fatal; only when one is found do we read and reuse its password.
+  local pw=""
+  if kubectl -n "${namespaces[0]}" get secret "$secret" >/dev/null 2>&1; then
+    pw="$(kubectl -n "${namespaces[0]}" get secret "$secret" -o jsonpath='{.data.password}' | base64 -d)"
+  fi
   if [[ -z "$pw" ]]; then
     pw="$(openssl rand -base64 18 | tr -d '/+=' | head -c 24)"
   fi
