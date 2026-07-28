@@ -33,6 +33,15 @@ import { CONFIG } from '../lib/k6/config.js';
 
 const SCENARIO = CONFIG.scenario; // 'flight' | 'hotel' | 'both'
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+// Fisher-Yates, in place, plain Math.random. Used only by smoke mode (below), where a run need
+// not be reproducible — so k6's un-seedable Math.random is fine here.
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr;
+}
 
 const TARGET_RPS = parseInt(__ENV.TARGET_RPS || '30', 10); // peak journeys/sec
 const PRE_VUS = parseInt(__ENV.PRE_ALLOCATED_VUS || '20', 10);
@@ -47,8 +56,9 @@ if (MAX_VUS > CONFIG.loadtest.userCount) {
 }
 
 // Smoke mode: set ITERATIONS=N to run EXACTLY N journeys (= N bookings) instead of the
-// ramping load. VUS controls how many run in parallel (default 1 = sequential). Great for a
-// quick "does the whole flow work end-to-end?" check before any real load.
+// ramping load. VUS controls how many run in parallel (default 1 = sequential). Discovery is
+// trimmed to ONE random route too (see setup) — a quick end-to-end check has no reason to search
+// the whole ROUTES table against search-service. Great for "does the whole flow work?" before load.
 //   k6 run -e ITERATIONS=5 load.js
 const SMOKE_ITERATIONS = parseInt(__ENV.ITERATIONS || '0', 10);
 const SMOKE_VUS = parseInt(__ENV.VUS || '1', 10);
@@ -146,11 +156,19 @@ const needHotels = SCENARIO === 'hotel' || SCENARIO === 'both';
 export function setup() {
   getToken(); // fail fast if Keycloak / test client / user is misconfigured
 
+  // Full run: search EVERY route and keep one bundle each — the breadth IS the point (it spreads
+  // load so inventory never becomes the bottleneck). Smoke run (ITERATIONS): a single usable route
+  // is all a quick end-to-end check needs, so walk the routes in RANDOM order and stop at the first
+  // usable bundle instead of hitting search-service ~300 times.
+  const smoke = SMOKE_ITERATIONS > 0;
+  const routePool = smoke ? shuffle(CONFIG.search.routes.slice()) : CONFIG.search.routes;
+
   const bundles = [];
-  const searched = CONFIG.search.routes.length;
-  for (const route of CONFIG.search.routes) {
+  let searched = 0;
+  for (const route of routePool) {
     if (needFlights && !(route.origin && route.destiny)) continue;
     if (needHotels && !route.city) continue;
+    searched++;
 
     const bundle = {
       label: `${route.origin || '—'}-${route.destiny || '—'}/${route.city || '—'}`,
@@ -158,25 +176,30 @@ export function setup() {
       hotels: needHotels ? searchHotels(route) : [],
     };
     const usable = (!needFlights || bundle.flights.length) && (!needHotels || bundle.hotels.length);
-    if (usable) bundles.push(bundle);
+    if (usable) {
+      bundles.push(bundle);
+      if (smoke) break; // one coherent route is enough for a smoke check
+    }
   }
 
   if (bundles.length === 0) {
     throw new Error(
       `No routes with in-stock inventory for SCENARIO=${SCENARIO} ` +
       `(searched ${searched} of ${CONFIG.search.routesTotal} routes). ` +
-      (searched < CONFIG.search.routesTotal
+      (!smoke && searched < CONFIG.search.routesTotal
         ? `You are running a SAMPLE (ROUTES_SAMPLE=${searched}); the drawn routes may simply have no ` +
           `stock. Raise ROUTES_SAMPLE, or try another draw with ROUTES_SEED. `
         : '') +
       `Otherwise fill/adjust the ROUTES table in lib/k6/config.js and check dates & seeded inventory.`,
     );
   }
-  // Say which routes were searched, not just which were usable — a sampled run and a full run
+  // Say which routes were searched, not just which were usable — a sampled/smoke run and a full run
   // are not comparable, and that has to be visible in the log that ends up next to the results.
+  const modeTag = smoke
+    ? ' [smoke — first usable route of a random walk]'
+    : (searched < CONFIG.search.routesTotal ? ` [sampled, seed ${CONFIG.search.routesSeed}]` : ' [full table]');
   console.log(
-    `SCENARIO=${SCENARIO} — searched ${searched} of ${CONFIG.search.routesTotal} route(s)` +
-    (searched < CONFIG.search.routesTotal ? ` [sampled, seed ${CONFIG.search.routesSeed}]` : ' [full table]') +
+    `SCENARIO=${SCENARIO} — searched ${searched} of ${CONFIG.search.routesTotal} route(s)${modeTag}` +
     ` — ${bundles.length} usable bundle(s): ` +
     bundles.map((b) => `${b.label} [${b.flights.length}F/${b.hotels.length}H]`).join(', '),
   );

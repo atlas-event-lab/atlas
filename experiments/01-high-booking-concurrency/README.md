@@ -87,6 +87,13 @@ make -C .. smoke EXP=01-high-booking-concurrency N=5   # same, via Makefile
 ```
 
 Add `-e VUS=2` to run a few in parallel, `-e SCENARIO=both` to smoke the flight+hotel path.
+
+`ITERATIONS` also trims **discovery** to a single route: `setup()` walks the `ROUTES` table in
+random order and stops at the **first route with in-stock inventory** for the scenario, instead of
+searching all ~300 against search-service (which the full load run does on purpose, to spread
+inventory). So a smoke run starts in seconds. The full experiment — the `SCENARIO` variants and the
+ramping load below — still fans out over the whole table.
+
 In the end-of-run summary, the counters tell you exactly what happened:
 `bookings_created` (201) should equal your `ITERATIONS`, `bookings_failed` should be 0, and
 `checks` should be 100%. Any non-zero failure or a threshold breach means something to fix
