@@ -32,6 +32,14 @@ Already have a cluster with `kubectl` pointing at it? Skip to the checks below.
 | A block-storage `StorageClass` | Postgres/Kafka PVCs | **Nothing** — the manifests leave it unset, so they use your cluster's **default** StorageClass (works on any cloud). Confirm one is marked `(default)` with `kubectl get storageclass`. |
 | Container images | the 9 services | **Nothing** — they're **public** on GHCR (`ghcr.io/atlas-event-lab/atlas-<service>`), published by each service repo's CI. Kubernetes pulls them anonymously; no login or pull-secret needed. |
 
+> **Chart versions are pinned.** Every `helm … --install` below passes an explicit `--version`,
+> matching the pins in the GitOps path ([`deploy/argocd/apps/*.yaml`](./deploy/argocd/apps)) so
+> both deploy paths install identical versions and a fresh run is reproducible on any date. When
+> you bump a chart, change it here **and** in the matching Argo `Application`. The pins also keep
+> you on builds that work with current Kubernetes: Civo only offers **k8s 1.33+**, on which older
+> Strimzi (0.45.x) CrashLoops and can't match the `v1` Kafka CR — see
+> [TS-ARGO-06](./deploy/TROUBLESHOOTING.md#ts-argo-06--kafka-never-comes-up-strimzi-crashloops-or-the-kafka-cr-wont-apply).
+
 > **Stuck on an error?** Known issues and fixes (provisioning, platform *and* the services)
 > live in [`deploy/TROUBLESHOOTING.md`](./deploy/TROUBLESHOOTING.md). Check there before
 > assuming something is broken — several normal-but-alarming states are documented, notably
@@ -117,7 +125,7 @@ services + simulated payment provider) · `atlas-observability` (Grafana stack, 
 
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx --version 4.12.1 \
   -n atlas-system -f deploy/platform/ingress-nginx/values.yaml
 kubectl get svc -n atlas-system ingress-nginx-controller -w   # wait for EXTERNAL-IP, then Ctrl-C
 
@@ -143,7 +151,7 @@ echo "$LB"
 ```bash
 # 3a. operator
 helm repo add cnpg https://cloudnative-pg.github.io/charts && helm repo update
-helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace
+helm upgrade --install cnpg cnpg/cloudnative-pg --version 0.23.2 -n cnpg-system --create-namespace
 kubectl rollout status deploy/cnpg-cloudnative-pg -n cnpg-system
 
 # 3b. per-service DB secrets (BEFORE creating the cluster)
@@ -172,7 +180,7 @@ Connection string (already in the Helm values): `atlas-pg-rw.atlas-data:5432/<db
 
 ```bash
 helm repo add strimzi https://strimzi.io/charts && helm repo update
-helm upgrade --install strimzi strimzi/strimzi-kafka-operator -n atlas-data
+helm upgrade --install strimzi strimzi/strimzi-kafka-operator --version 1.1.0 -n atlas-data
 kubectl rollout status deploy/strimzi-cluster-operator -n atlas-data
 
 # The JMX->Prometheus ruleset MUST exist BEFORE the Kafka CR: kafka.yaml references it via
@@ -541,7 +549,7 @@ Needed by the experiments that scale on Kafka lag (Exp 01, 04, …):
 
 ```bash
 helm repo add kedacore https://kedacore.github.io/charts && helm repo update
-helm upgrade --install keda kedacore/keda -n keda --create-namespace
+helm upgrade --install keda kedacore/keda --version 2.16.1 -n keda --create-namespace
 kubectl apply -f deploy/platform/keda/     # ScaledObjects (Kafka-lag driven)
 
 # Verify — BOTH must appear, and payment must have no CPU HPA of its own:
