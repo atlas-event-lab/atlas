@@ -36,6 +36,7 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 | [TS-ARGO-04](#ts-argo-04--oversized-crd-serversideapply) | Argo CD | Oversized CRD sync fails: annotation too long |
 | [TS-ARGO-05](#ts-argo-05--ingress-patch-fails-with-x509-certificate-signed-by-unknown-authority) | Argo CD | Ingress apply/patch fails: `x509: certificate signed by unknown authority` (empty webhook caBundle) |
 | [TS-ARGO-06](#ts-argo-06--kafka-never-comes-up-strimzi-crashloops-or-the-kafka-cr-wont-apply) | Argo CD | Kafka never comes up — Strimzi CrashLoopBackOff (`emulationMajor`) or the Kafka CR won't apply (`v1` vs `v1beta2`) |
+| [TS-ARGO-07](#ts-argo-07--apps-stuck-syncunknown-with-comparisonerror--terminatingreplicas) | Argo CD | Apps stuck `SYNC=Unknown` — `ComparisonError … .status.terminatingReplicas: field not declared in schema` |
 
 ---
 
@@ -1033,3 +1034,46 @@ Because Argo syncs from **origin/main**, commit and push this (see the GitOps no
 replaces the CRDs (now serving `v1`) and rolls the operator; the Kafka CR then applies and the
 brokers come up. Keep the operator's `targetRevision` in step with the Kafka `version:` whenever
 either moves — that pairing is the whole bug.
+
+> **Upgrading an existing 0.45.x cluster in place** (not a fresh install) hits one extra snag:
+> the 1.x CRDs drop `v1beta2`, but k8s refuses to remove a version still in the CRD's
+> `status.storedVersions`, so the sync fails with
+> `status.storedVersions[0]: Invalid value: "v1beta2": … must remain in spec.versions until a
+> storage migration`. On a lab cluster with **no Kafka data yet** (`kubectl get kafka,kafkatopic
+> -A` is empty), just delete the old CRDs and let Argo reinstall the 1.x ones:
+> `kubectl get crd -o name | grep strimzi | xargs kubectl delete`. A **fresh** install never
+> sees this — it lays down the 1.x CRDs on an empty cluster.
+
+### TS-ARGO-07 — Apps stuck `SYNC=Unknown` with `ComparisonError … terminatingReplicas`
+
+**Symptom.** One or more apps sit at `SYNC=Unknown` (never sync, even though the resources look
+fine) and carry a `ComparisonError`:
+
+```
+Failed to compare desired state to live state: failed to calculate diff:
+error calculating structured merge diff: error building typed value from live resource:
+.status.terminatingReplicas: field not declared in schema
+```
+
+It hits **every app with a Deployment or ReplicaSet** — `redis`, the operators, etc. — so large
+parts of the stack never converge (e.g. `strimzi-operator` can't upgrade, so Kafka never comes up).
+
+**Cause.** Kubernetes 1.33 added `.status.terminatingReplicas` to Deployments/ReplicaSets. The
+Kubernetes schema **bundled in this Argo CD build (v2.14.9 / chart 7.8.23)** predates it, so Argo's
+client-side structured-merge diff can't build a typed value from the live object and bails. Civo
+only offers k8s 1.33+, so every cluster here is exposed.
+
+**Fix.** Use **server-side diff** — Argo asks the API server (which knows the field) to compute
+the diff. It's enabled for new clusters in
+[`argocd-values.yaml`](argocd/install/argocd-values.yaml)
+(`configs.params."controller.diff.server.side": "true"`), so a fresh `bootstrap.sh` never sees
+this. To turn it on for a cluster that's already up:
+
+```bash
+kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge \
+  -p '{"data":{"controller.diff.server.side":"true"}}'
+kubectl -n argocd rollout restart statefulset argocd-application-controller
+```
+
+The `ComparisonError` clears within a reconcile and the blocked apps sync. (Alternative: bump the
+Argo CD chart to a build whose bundled schema already knows the field.)

@@ -20,6 +20,15 @@ configs:
   params:
     # Ingress terminates TLS; talk plain HTTP to argocd-server (no self-signed cert hop).
     server.insecure: true
+    # Server-side diff — REQUIRED on Kubernetes 1.33+ (Civo only offers 1.33+). k8s 1.33 adds
+    # `.status.terminatingReplicas` to Deployments/ReplicaSets; this Argo build's bundled schema
+    # doesn't know it, so the client-side structured-merge diff throws
+    #   "error building typed value from live resource: .status.terminatingReplicas: field not
+    #    declared in schema"
+    # and EVERY Deployment-backed app (redis, the operators, …) goes SYNC=Unknown and never
+    # syncs. Server-side diff asks the API server to compute the diff, which knows the field.
+    # See TS-ARGO-07. (Alternative: bump the Argo chart to a build with a newer schema.)
+    controller.diff.server.side: "true"
   rbac:
     # v1: keep the built-in local `admin` account (password printed by bootstrap). Everyone
     # else is read-only so the UI can be shared for the "watch it converge" demo safely.
