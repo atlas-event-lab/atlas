@@ -101,6 +101,12 @@ kubectl get nodes                                 # expect 3 Ready nodes
 - Prefer the `> file` redirect over `--save`: `--save` merges into `~/.kube/config` and
   collides with an exported `KUBECONFIG`.
 - Always `head -5` the file to confirm it has YAML before running `kubectl`.
+- **A brand-new terminal times out on the OLD IP?** `export KUBECONFIG` is **per-shell** — a fresh
+  terminal without it falls back to `~/.kube/config`, whose `atlas-civo` context still holds a
+  *previous* cluster's API IP (the `> file` / `--local-path` forms never updated it). Either
+  `export KUBECONFIG=~/.kube/civo-atlas.yaml` in that shell, or refresh the default context once so
+  plain `kubectl` works everywhere: `civo kubernetes config atlas-civo --save --region nyc1`
+  (no `--local-path`, so it merges into `~/.kube/config`).
 - **Foolproof fallback:** Civo Dashboard → your cluster → **Download Config**, then
   `export KUBECONFIG=<downloaded-file>`.
 
