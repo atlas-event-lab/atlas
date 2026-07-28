@@ -71,6 +71,30 @@ wait_for_object() {  # kind ns name [timeout_s]
   return 0
 }
 
+# The ingress-nginx admission webhook validates every Ingress apply. Its caBundle is injected
+# by the chart's `-patch` post-install hook — but under Argo CD that hook runs PostSync, which
+# can land AFTER the LoadBalancer IP appears (what Phase B polls for). Patching a host in that
+# window fails with `x509: certificate signed by unknown authority`. Wait for the caBundle; if
+# the hook is still lagging, inject it ourselves from the admission Secret (exactly what the
+# hook does) so the step is deterministic. See TS-ARGO-05 in deploy/TROUBLESHOOTING.md.
+ensure_ingress_webhook_ready() {  # [timeout_s]
+  local timeout="${1:-180}" waited=0 wh=ingress-nginx-admission
+  kubectl get validatingwebhookconfiguration "$wh" >/dev/null 2>&1 || return 0  # webhook disabled — nothing to do
+  while [[ -z "$(kubectl get validatingwebhookconfiguration "$wh" \
+        -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null)" ]]; do
+    if (( waited >= timeout )); then
+      local ca; ca="$(kubectl -n atlas-system get secret "$wh" -o jsonpath='{.data.ca}' 2>/dev/null)"
+      [[ -z "$ca" ]] && { warn "ingress webhook caBundle empty and no admission Secret — Ingress patches may fail"; return 0; }
+      kubectl patch validatingwebhookconfiguration "$wh" --type json \
+        -p "[{\"op\":\"replace\",\"path\":\"/webhooks/0/clientConfig/caBundle\",\"value\":\"$ca\"}]" >/dev/null
+      warn "ingress webhook caBundle was empty (PostSync hook lagged) — injected it from the admission Secret"
+      return 0
+    fi
+    sleep 5; waited=$((waited + 5))
+  done
+  return 0
+}
+
 # ═════════════════════════════════════════════════════════════════════════════
 # PHASE A — pre-root: secrets, configmap, Argo CD, root app
 # ═════════════════════════════════════════════════════════════════════════════
@@ -114,11 +138,17 @@ kubectl create configmap wiremock-mappings -n atlas-apps \
 ok "wiremock-mappings ConfigMap applied"
 
 # 5. Install Argo CD + custom health, then wait for the server.
+# --timeout 15m (not helm's 5m default): on a COLD cluster the nodes pull every Argo CD image
+# for the first time, which routinely exceeds 5m and would mark the release `failed` even
+# though the pods are still coming up fine. If the wait ever DOES time out, the install is not
+# broken — re-running this script is idempotent, or watch `kubectl -n argocd get pods` and let
+# them finish. A pod stuck in ContainerCreating for many minutes is a bad node, not a slow
+# pull — see TS-CIVO-02 in deploy/TROUBLESHOOTING.md.
 log "Installing Argo CD (chart $ARGOCD_CHART_VERSION)"
 helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
 helm repo update argo >/dev/null
 helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace \
-  --version "$ARGOCD_CHART_VERSION" -f "$ARGO_DIR/install/argocd-values.yaml" --wait
+  --version "$ARGOCD_CHART_VERSION" -f "$ARGO_DIR/install/argocd-values.yaml" --wait --timeout 15m
 # Merge the CNPG/Strimzi/Keycloak custom health into the Helm-managed argocd-cm.
 kubectl -n argocd patch configmap argocd-cm --type merge \
   --patch-file "$ARGO_DIR/install/argocd-cm-health.yaml"
@@ -166,6 +196,10 @@ kubectl create secret generic kafka-ui-basic-auth -n atlas-data \
 ok "kafka-ui-basic-auth Secret applied (user: $KAFKA_UI_USER)"
 
 # 10. Patch the live public hostnames (each covered by ignoreDifferences so self-heal keeps them).
+# First make sure the ingress-nginx admission webhook can be trusted, or every patch below 500s
+# out with an x509 error (the PostSync-hook race — see the helper above).
+log "Waiting for the ingress-nginx admission webhook to be ready"
+ensure_ingress_webhook_ready 180
 log "Patching public nip.io hostnames with $LB (waiting for each object as Argo creates it)"
 if wait_for_object ingress argocd argocd-server 300; then
   kubectl -n argocd patch ingress argocd-server --type json \

@@ -7,12 +7,14 @@
 #
 # The UI is fronted by the same ingress-nginx LoadBalancer as the rest of the stack, so
 # argocd-server runs in HTTP (insecure) mode and TLS is terminated at the edge. The ingress
-# host carries a <cluster-ip> placeholder that bootstrap.sh Phase B patches to the real LB IP
-# (the LB only exists after Argo has synced the wave-1 ingress-nginx app).
+# host carries a 0.0.0.0 placeholder IP that bootstrap.sh Phase B patches to the real LB IP
+# (the LB only exists after Argo has synced the wave-1 ingress-nginx app). The placeholder
+# MUST be a valid RFC 1123 host — an unresolvable stand-in IP like 0.0.0.0 is fine, a token
+# with angle brackets is NOT (k8s rejects the Ingress at apply time).
 
 global:
   # Keep the footprint small for a single-node learning cluster.
-  domain: argocd.<cluster-ip>.nip.io
+  domain: argocd.0.0.0.0.nip.io
 
 configs:
   params:
@@ -29,7 +31,7 @@ server:
     enabled: true
     ingressClassName: nginx
     # Patched to argocd.<LB-IP>.nip.io by bootstrap.sh Phase B (step 10).
-    hostname: argocd.<cluster-ip>.nip.io
+    hostname: argocd.0.0.0.0.nip.io
     tls: false
   # Modest resources — this is a control plane for a lab, not production.
   resources:

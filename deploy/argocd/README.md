@@ -22,7 +22,9 @@ under [`deploy/helm/atlas-service/`](../helm/atlas-service). GitOps just drives 
 ```bash
 # 1. Provision a cluster (skip if you already have one + kubectl context).
 cd deploy/cluster/civo/terraform && terraform apply    # or OKE — see deploy/cluster/README.md
+terraform output -raw kubeconfig > ~/.kube/civo-atlas.yaml   # save it (empty file, or i/o timeout on a recreated cluster? → TS-CIVO-01)
 export KUBECONFIG=~/.kube/civo-atlas.yaml
+kubectl get nodes                                      # expect 3 Ready nodes BEFORE step 2
 
 # 2. Bootstrap (from the repo root). No arguments needed.
 ./deploy/argocd/bootstrap.sh

@@ -11,7 +11,8 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 
 | ID | Area | Issue |
 |----|------|-------|
-| [TS-CIVO-01](#ts-civo-01--civo-kubectl-cannot-connect-empty-kubeconfig) | Civo | `kubectl` cannot connect after apply — empty kubeconfig (`localhost:8080 refused`) |
+| [TS-CIVO-01](#ts-civo-01--civo-kubectl-cannot-connect-empty-kubeconfig-or-stale-ip-after-a-recreate) | Civo | `kubectl` cannot connect — empty kubeconfig (`localhost:8080 refused`) **or** stale IP after a recreate (`i/o timeout`) |
+| [TS-CIVO-02](#ts-civo-02--civo-a-pod-is-stuck-in-containercreating-failedcreatepodsandbox) | Civo | A pod is stuck in `ContainerCreating` for minutes (`FailedCreatePodSandBox`) — a bad node |
 | [TS-OKE-01](#ts-oke-01--oke-terraform-init-provider-version-conflict) | Oracle OKE | `terraform init` — provider version conflict (`~> 6.0` vs `>= 8.19.0`) |
 | [TS-OKE-02](#ts-oke-02--oke-terraform-plan-fails-on-bastionoperator-images) | Oracle OKE | `terraform plan` — "Splat of null value" (bastion / operator) |
 | [TS-OKE-03](#ts-oke-03--oke-terraform-plan-fails-resolving-the-worker-image) | Oracle OKE | `terraform plan` — worker image "argument must not be null" |
@@ -32,25 +33,39 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 | [TS-ARGO-02](#ts-argo-02--crd-before-cr-no-matches-for-kind) | Argo CD | CR wave fails: `no matches for kind …` (CRD-before-CR) |
 | [TS-ARGO-03](#ts-argo-03--app-stuck-progressing-on-a-stateful-cr) | Argo CD | App stuck **Progressing** on a stateful CR |
 | [TS-ARGO-04](#ts-argo-04--oversized-crd-serversideapply) | Argo CD | Oversized CRD sync fails: annotation too long |
+| [TS-ARGO-05](#ts-argo-05--ingress-patch-fails-with-x509-certificate-signed-by-unknown-authority) | Argo CD | Ingress apply/patch fails: `x509: certificate signed by unknown authority` (empty webhook caBundle) |
 
 ---
 
 ## Cluster provisioning
 
-### TS-CIVO-01 — Civo: `kubectl` cannot connect (empty kubeconfig)
+### TS-CIVO-01 — Civo: `kubectl` cannot connect (empty kubeconfig, or stale IP after a recreate)
 
-**Symptom.** `terraform apply` succeeds and prints `api_endpoint`, but
-`terraform output -raw kubeconfig > ~/.kube/civo-atlas.yaml` writes an **empty** file, and
-`kubectl get nodes` fails with `The connection to the server localhost:8080 was refused`
-(kubectl's default when it has no usable kubeconfig).
+**Symptom.** `kubectl get nodes` fails, in one of two ways:
 
-**Cause.** Two things stack up:
+- **A — empty kubeconfig.** `terraform apply` succeeds and prints `api_endpoint`, but
+  `terraform output -raw kubeconfig > ~/.kube/civo-atlas.yaml` writes an **empty** file, and
+  kubectl fails with `The connection to the server localhost:8080 was refused` (kubectl's
+  default when it has no usable kubeconfig).
+- **B — stale IP after a recreate.** You `destroy`ed and re-`apply`ed the cluster (the
+  documented "off when idle" workflow), and now kubectl hangs then fails with
+  `dial tcp <old-ip>:6443: i/o timeout`. The kubeconfig is **valid but points at the previous
+  cluster's API IP** — Civo assigns a new `master_ip` on every recreate.
+
+**Cause.**
 1. The Civo Terraform provider's `kubeconfig` attribute can come back **empty right after
    apply** (the control plane is still finalizing when the value is read into state), so the
-   file you write is empty.
+   file you write is empty. It is also **only populated at create time** — on a state that has
+   since been refreshed or re-applied, `terraform output -raw kubeconfig` returns **empty**, so
+   it can't be used to recover a stale kubeconfig either.
 2. `civo kubernetes config … --save` **merges into `~/.kube/config`**, but if you exported
    `KUBECONFIG` to the empty `civo-atlas.yaml`, kubectl keeps reading that empty file — the
    env var wins over `~/.kube/config`.
+3. A recreated cluster gets a **new API server IP**, but your saved kubeconfig (and any
+   `atlas-civo` context in `~/.kube/config`) still holds the old one → `i/o timeout`.
+
+The fix is the same for both: **re-fetch the kubeconfig from Civo** (never reuse the old file,
+and don't rely on `terraform output` here).
 
 **Fix.** Fetch the kubeconfig with the Civo CLI **to stdout** (not `--save`) and point
 `KUBECONFIG` at that file:
@@ -61,16 +76,20 @@ civo apikey save atlas "$CIVO_TOKEN" && civo apikey current atlas
 civo apikey ls                                    # confirm it's saved and current
 
 # 2. Confirm the cluster is ACTIVE and note its region.
-civo kubernetes list --region NYC1                # region = whatever you set in tfvars
+civo kubernetes list --region nyc1                # region = whatever you set in tfvars, LOWERCASE
 
 # 3. Dump the kubeconfig straight to the file, then point kubectl at it.
-civo kubernetes config atlas-civo --region NYC1 > ~/.kube/civo-atlas.yaml
+civo kubernetes config atlas-civo --region nyc1 > ~/.kube/civo-atlas.yaml
 head -5 ~/.kube/civo-atlas.yaml                   # must show YAML: apiVersion / clusters / server
+grep server: ~/.kube/civo-atlas.yaml              # after a recreate: confirm it's the NEW api_endpoint IP
 export KUBECONFIG=~/.kube/civo-atlas.yaml
 kubectl get nodes                                 # expect 3 Ready nodes
 ```
 
 **Notes.**
+- **The CLI region is case-sensitive and lowercase** (`nyc1`, `lon1`, …) even though
+  `terraform.tfvars` accepts `NYC1`. Passing `--region NYC1` fails with
+  `database_region_not_found`. Confirm the code with `civo region ls`.
 - Use the real key or `$CIVO_TOKEN` **with the `$`** — `civo apikey save atlas CIVO_TOKEN`
   stores the literal string and every later call fails auth.
 - Prefer the `> file` redirect over `--save`: `--save` merges into `~/.kube/config` and
@@ -78,6 +97,51 @@ kubectl get nodes                                 # expect 3 Ready nodes
 - Always `head -5` the file to confirm it has YAML before running `kubectl`.
 - **Foolproof fallback:** Civo Dashboard → your cluster → **Download Config**, then
   `export KUBECONFIG=<downloaded-file>`.
+
+### TS-CIVO-02 — Civo: a pod is stuck in `ContainerCreating` (`FailedCreatePodSandBox`)
+
+**Symptom.** A pod never starts — `kubectl -n <ns> get pods` shows it `ContainerCreating` (or
+`Init:0/1`) for **many minutes**, and `bootstrap.sh` fails on the Argo CD wait with
+`context deadline exceeded`. Its events repeat:
+
+```
+Warning  FailedCreatePodSandBox  ...  code = DeadlineExceeded desc = context deadline exceeded
+Warning  FailedCreatePodSandBox  ...  code = FailedPrecondition desc = failed to reserve sandbox name "..." is reserved for "..."
+```
+
+**Cause.** One worker node came up with a **broken container runtime** — its `containerd`
+can't create the pod sandbox (network namespace + CNI), so every pod the scheduler places
+there hangs. The `DeadlineExceeded` is the first attempt timing out; the `reserved for …`
+lines are the retries colliding with that stuck first attempt. It is **not** a slow image
+pull (those clear on their own in a minute or two) and **not** the RFC 1123 host bug
+([the `<cluster-ip>` placeholders are already fixed to valid IPs](../argocd/install/argocd-values.yaml)).
+A node coming up unhealthy is a provisioning flake — it can happen on any fresh cluster.
+
+**Confirm it's one bad node.** Every stuck pod will be on the **same** node; the healthy pods
+are all elsewhere:
+
+```bash
+kubectl get pods -A -o wide | grep -E 'ContainerCreating|Init:' | awk '{print $8}' | sort -u
+#   → all rows show ONE node name = that node is the bad one
+kubectl get nodes                                  # it still reports Ready — the runtime lies
+```
+
+**Fix — recycle just that node** (Civo replaces the instance, ~2–4 min; the other two stay up):
+
+```bash
+BADNODE=<the node name from above>
+civo kubernetes recycle atlas-civo --node "$BADNODE" --region nyc1   # region LOWERCASE (see TS-CIVO-01)
+kubectl get nodes -w                               # old node leaves, a fresh one joins Ready
+```
+
+Then re-run the step that failed — `bootstrap.sh` is idempotent, so just run it again; the
+pods now schedule onto healthy nodes and the images are already cached cluster-wide, so it
+comes up fast. (If the release is wedged from an earlier failed attempt:
+`helm uninstall argocd -n argocd` first, wait for the `argocd` namespace pods to clear, then
+re-run.)
+
+> **Whole cluster looks wrong, not just one node?** Then it isn't this — `terraform destroy &&
+> terraform apply` for a clean slate is the bigger hammer, but a single bad node never needs it.
 
 ### TS-OKE-01 — OKE: `terraform init` provider version conflict
 
@@ -807,3 +871,58 @@ Add `--server-side` to the apply — it writes no `last-applied-configuration` a
 
 Rule of thumb: any single manifest over ~250 KB needs server-side apply, whichever tool is
 driving it.
+
+### TS-ARGO-05 — Ingress patch fails with `x509: certificate signed by unknown authority`
+
+**Symptom.** `bootstrap.sh` reaches Phase B, applies the secrets, then dies while patching the
+public hostnames:
+
+```
+Error from server (InternalError): Internal error occurred: failed calling webhook
+"validate.nginx.ingress.kubernetes.io": failed to call webhook: Post
+"https://ingress-nginx-controller-admission.atlas-system.svc:443/networking/v1/ingresses?timeout=10s":
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+Any `kubectl apply`/`patch` on an Ingress hits it — Argo can't sync the Keycloak / Kafka-UI /
+atlas ingresses either.
+
+**Cause.** ingress-nginx ships a **validating admission webhook**; the API server must trust the
+cert that webhook serves. That trust comes from the `caBundle` on the
+`ingress-nginx-admission` `ValidatingWebhookConfiguration`, which the chart's
+**`ingress-nginx-admission-patch` post-install hook Job** injects. Under Argo CD that Job is a
+**PostSync** hook — it only runs after the ingress-nginx Application is Synced + Healthy, which
+can land **after** the LoadBalancer IP appears (what Phase B waits on). In that window the
+webhook is registered but its `caBundle` is still **empty**, so every Ingress apply is rejected.
+
+**Confirm it:**
+
+```bash
+# empty output = the caBundle was never injected (this is the bug)
+kubectl get validatingwebhookconfiguration ingress-nginx-admission \
+  -o jsonpath='{.webhooks[0].clientConfig.caBundle}' ; echo
+# the -patch Job is missing/incomplete (only -create shows)
+kubectl -n atlas-system get jobs | grep admission
+```
+
+**Fix — inject the caBundle from the admission Secret** (exactly what the `-patch` hook does;
+the CA already exists in the Secret's `ca` key):
+
+```bash
+CA=$(kubectl -n atlas-system get secret ingress-nginx-admission -o jsonpath='{.data.ca}')
+kubectl patch validatingwebhookconfiguration ingress-nginx-admission --type json \
+  -p "[{\"op\":\"replace\",\"path\":\"/webhooks/0/clientConfig/caBundle\",\"value\":\"$CA\"}]"
+
+# verify: a server-side dry-run Ingress now passes the webhook
+kubectl create ingress t --rule="t.local/=svc:80" --class=nginx --dry-run=server -n atlas-system
+```
+
+Then re-run `bootstrap.sh` (idempotent) — the host patches now succeed.
+
+> **Already fixed in the flow.** `bootstrap.sh` calls `ensure_ingress_webhook_ready` before it
+> patches any host: it waits for the caBundle and, if the PostSync hook is still lagging,
+> injects it from the Secret automatically. You only do the above by hand on an older bootstrap
+> or if you patch an Ingress yourself before that step. If you would rather not run the webhook
+> at all, set `controller.admissionWebhooks.enabled: false` in
+> `deploy/platform/ingress-nginx/values.yaml` (you lose Ingress validation, but the whole race
+> disappears).

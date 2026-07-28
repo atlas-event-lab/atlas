@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: keycloak.<cluster-ip>.nip.io
+    - host: keycloak.0.0.0.0.nip.io
       http:
         paths:
           - path: /

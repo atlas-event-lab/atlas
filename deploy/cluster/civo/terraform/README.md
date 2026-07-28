@@ -35,9 +35,11 @@ export KUBECONFIG=~/.kube/civo-atlas.yaml
 kubectl get nodes                         # expect 3 Ready nodes
 ```
 
-> **`kubectl` says "connection to localhost:8080 refused"?** The kubeconfig output can come
-> back empty right after apply — see **TS-CIVO-01** in
-> [Troubleshooting](../../../TROUBLESHOOTING.md#ts-civo-01--civo-kubectl-cannot-connect-empty-kubeconfig).
+> **`kubectl` can't connect?** Two cases, both in **TS-CIVO-01**
+> ([Troubleshooting](../../../TROUBLESHOOTING.md#ts-civo-01--civo-kubectl-cannot-connect-empty-kubeconfig-or-stale-ip-after-a-recreate)):
+> `localhost:8080 refused` (the kubeconfig came back empty right after apply), or
+> `i/o timeout` on an old IP (you **recreated** the cluster — Civo gives it a new API IP, so
+> **re-fetch the kubeconfig after every recreate**; `terraform output` won't help here).
 
 ## What each variable means
 
