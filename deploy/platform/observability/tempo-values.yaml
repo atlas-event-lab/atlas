@@ -41,17 +41,17 @@ tempo:
     # prometheusSpec.enableRemoteWriteReceiver: true).
     remoteWriteUrl: "http://kps-kube-prometheus-stack-prometheus.atlas-observability:9090/api/v1/write"
 
-  # The generator only emits when its processors are enabled for the tenant. The grafana/tempo
-  # chart renders `tempo.overrides` verbatim into Tempo's config `overrides:` block, so the
-  # processors go under overrides.defaults.metrics_generator (Tempo "standard overrides" format).
-  # NOTE: it is `overrides`, NOT `global_overrides` (that key is silently ignored → no processors).
-  overrides:
-    defaults:
-      metrics_generator:
-        processors:
-          - service-graphs
-          - span-metrics
-    per_tenant_override_config: /conf/overrides.yaml
+  # The generator's processors are enabled by `metricsGenerator.enabled` above: chart 1.18.2 then
+  # defaults `overrides.metrics_generator_processors: [service-graphs, span-metrics]` in the main
+  # config, which applies to every tenant (multitenancy is off). That is all Tempo needs.
+  #
+  # Do NOT add a `tempo.overrides:` block here. This chart writes it VERBATIM into the runtime
+  # per-tenant override file (/conf/overrides.yaml), which Tempo parses as `map[tenant]LegacyOverrides`.
+  # A `defaults:` / `metrics_generator:` block (or a self-referential per_tenant_override_config)
+  # is not valid there, so Tempo crash-loops on startup with
+  #   "field metrics_generator not found in type overrides.LegacyOverrides"
+  # With no `overrides:` value the chart renders a harmless empty `overrides: {}` runtime file and
+  # keeps the processors in the main config. See TS-PLATFORM-10.
 
 persistence:
   enabled: true

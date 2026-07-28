@@ -26,6 +26,7 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 | [TS-PLATFORM-07](#ts-platform-07--kafka-has-no-broker-pods-and-no-status) | Platform | Kafka has **no broker pods** and no status; services log `node -1` timeouts |
 | [TS-PLATFORM-08](#ts-platform-08--keycloak-restarts-forever-exit-code-137) | Platform | Keycloak restarts forever, exit code **137**, never becomes Ready |
 | [TS-PLATFORM-09](#ts-platform-09--password-authentication-failed-for-user-svc_user-across-services) | Platform | `password authentication failed for user "<svc>_user"` across many services (rotated DB secrets) |
+| [TS-PLATFORM-10](#ts-platform-10--tempo-crashloops-field-metrics_generator-not-found-in-legacyoverrides) | Platform | Tempo CrashLoops — `field metrics_generator not found in type overrides.LegacyOverrides` |
 | [TS-APPS-01](#ts-apps-01--four-services-have-no-pods-after-a-helm-upgrade) | Apps | Four services have **no pods at all** after `helm upgrade` |
 | [TS-APPS-02](#ts-apps-02--pods-stuck-containercreating-or-imagepullbackoff-for-minutes) | Apps | Pods stuck `ContainerCreating` / `ImagePullBackOff` for minutes |
 | [TS-APPS-03](#ts-apps-03--startup-probe-failed-warnings-while-a-service-boots) | Apps | `Startup probe failed` warnings while a service boots |
@@ -672,6 +673,58 @@ kubectl -n atlas-system rollout restart statefulset keycloak
 Run it under `bash` (the `${p%%:*}` splitting and `$PAIRS` word-splitting need it — `zsh` won't
 split an unquoted variable). The passwords are alphanumeric (the generator strips `/+=`), so the
 single-quoted `ALTER ROLE` is safe.
+
+### TS-PLATFORM-10 — Tempo CrashLoops: `field metrics_generator not found in ...LegacyOverrides`
+
+**Symptom.** `obs-tempo` never goes Healthy; `tempo-0` is `CrashLoopBackOff` and its log ends with:
+
+```
+module failed module=overrides err="… failed to load runtime config: load file: yaml: unmarshal
+errors: line 3: field metrics_generator not found in type overrides.LegacyOverrides
+        line 7: cannot unmarshal !!str `/conf/o...` into overrides.LegacyOverrides"
+```
+
+Every other module (`querier`, `distributor`, …) then fails "because it depends on module
+overrides".
+
+**Cause.** The grafana/tempo chart writes the `tempo.overrides` value **verbatim** into the runtime
+per-tenant override file (`/conf/overrides.yaml`), which Tempo parses as `map[tenant]LegacyOverrides`
+(a tenant-id → legacy-overrides map). `tempo-values.yaml` had a *new-format* block there —
+
+```yaml
+tempo:
+  overrides:
+    defaults: { metrics_generator: { processors: [service-graphs, span-metrics] } }
+    per_tenant_override_config: /conf/overrides.yaml
+```
+
+— so Tempo reads `defaults` and `per_tenant_override_config` as two "tenants" whose values aren't
+valid `LegacyOverrides`, and crashes. The block was also **redundant**: with
+`metricsGenerator.enabled: true`, the chart already sets the default
+`overrides.metrics_generator_processors: [service-graphs, span-metrics]` in the *main* config.
+
+**Fix.** Remove the `tempo.overrides` block from
+[`tempo-values.yaml`](platform/observability/tempo-values.yaml). The chart then renders a harmless
+`overrides: {}` runtime file, the processors stay in the main config, and Tempo starts. Confirm
+with a local render (no cluster needed):
+
+```bash
+helm template tempo grafana/tempo --version 1.18.2 -f deploy/platform/observability/tempo-values.yaml \
+  | grep -A2 'overrides.yaml:'          # must show `overrides:` / `{}`, not a defaults block
+```
+
+Because Argo owns this from git, the fix reaches a running cluster only once it's on the branch Argo
+syncs. To unstick a cluster **now** without waiting for that: pause auto-sync on `obs-tempo`, patch
+the live ConfigMap, and restart the pod —
+
+```bash
+kubectl -n argocd patch application obs-tempo --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+kubectl -n atlas-observability patch configmap tempo --type merge -p '{"data":{"overrides.yaml":"overrides: {}\n"}}'
+kubectl -n atlas-observability delete pod tempo-0
+# re-enable auto-sync AFTER the values fix is pushed, so self-heal doesn't revert to the broken config:
+#   kubectl -n argocd patch application obs-tempo --type merge \
+#     -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+```
 
 ---
 
