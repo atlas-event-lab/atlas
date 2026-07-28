@@ -24,6 +24,7 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 | [TS-PLATFORM-06](#ts-platform-06--stateful-pod-stuck-containercreating-with-a-bound-pvc) | Platform | Stateful pod stuck `ContainerCreating` with a **Bound** PVC |
 | [TS-PLATFORM-07](#ts-platform-07--kafka-has-no-broker-pods-and-no-status) | Platform | Kafka has **no broker pods** and no status; services log `node -1` timeouts |
 | [TS-PLATFORM-08](#ts-platform-08--keycloak-restarts-forever-exit-code-137) | Platform | Keycloak restarts forever, exit code **137**, never becomes Ready |
+| [TS-PLATFORM-09](#ts-platform-09--password-authentication-failed-for-user-svc_user-across-services) | Platform | `password authentication failed for user "<svc>_user"` across many services (rotated DB secrets) |
 | [TS-APPS-01](#ts-apps-01--four-services-have-no-pods-after-a-helm-upgrade) | Apps | Four services have **no pods at all** after `helm upgrade` |
 | [TS-APPS-02](#ts-apps-02--pods-stuck-containercreating-or-imagepullbackoff-for-minutes) | Apps | Pods stuck `ContainerCreating` / `ImagePullBackOff` for minutes |
 | [TS-APPS-03](#ts-apps-03--startup-probe-failed-warnings-while-a-service-boots) | Apps | `Startup probe failed` warnings while a service boots |
@@ -34,6 +35,7 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 | [TS-ARGO-03](#ts-argo-03--app-stuck-progressing-on-a-stateful-cr) | Argo CD | App stuck **Progressing** on a stateful CR |
 | [TS-ARGO-04](#ts-argo-04--oversized-crd-serversideapply) | Argo CD | Oversized CRD sync fails: annotation too long |
 | [TS-ARGO-05](#ts-argo-05--ingress-patch-fails-with-x509-certificate-signed-by-unknown-authority) | Argo CD | Ingress apply/patch fails: `x509: certificate signed by unknown authority` (empty webhook caBundle) |
+| [TS-ARGO-06](#ts-argo-06--kafka-never-comes-up-strimzi-crashloops-or-the-kafka-cr-wont-apply) | Argo CD | Kafka never comes up — Strimzi CrashLoopBackOff (`emulationMajor`) or the Kafka CR won't apply (`v1` vs `v1beta2`) |
 
 ---
 
@@ -571,6 +573,62 @@ kubectl uncordon <bad-node>       # once it is Running elsewhere
 `spec.resources.limits.memory`. A log that gets past those two lines and then fails is also
 something else; read it.
 
+### TS-PLATFORM-09 — `password authentication failed for user "<svc>_user"` across services
+
+**Symptom.** Several services (and Keycloak) crash or log, against their own database:
+
+```
+FATAL: password authentication failed for user "booking_user"
+FATAL: password authentication failed for user "keycloak_user"
+```
+
+It hits many `*_user` roles at once, and it starts after you **re-ran `bootstrap.sh`** (or
+`create-db-secrets.sh`) on an existing cluster.
+
+**Cause.** The per-service DB passwords live in Secrets that CloudNativePG uses to set each
+managed role's password (`passwordSecret` in `cluster.yaml`) and that the services read via
+`envFrom`. An **old** `create-db-secrets.sh` generated a **new random password on every run** and
+`kubectl apply`-ed it. But CNPG does **not** reliably re-apply a managed role's password when only
+the Secret changed — it stays on the password from when the role was first created. So a re-run
+rotates the Secret (and the service env on the next pod start) while the Postgres **role keeps the
+old password** → auth fails everywhere at once. (The script is now idempotent — it reuses an
+existing Secret's password — so a fresh clone won't do this. This entry is for a cluster already
+knocked out of sync.)
+
+**Confirm.** The current Secret's password does not authenticate as the role:
+
+```bash
+PW=$(kubectl -n atlas-data get secret booking-secret -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n atlas-data exec atlas-pg-1 -c postgres -- env PGPASSWORD="$PW" \
+  psql -h 127.0.0.1 -U booking_user -d booking_db -c 'select 1'   # FATAL: password authentication failed
+# CNPG shows it reconciled an OLD secret resourceVersion, far below the Secret's current one:
+kubectl -n atlas-data get cluster atlas-pg -o jsonpath='{.status.managedRolesStatus.passwordStatus}'
+```
+
+**Fix — realign every role to the Secret it should match, then restart the consumers** so they
+re-read the env:
+
+```bash
+PAIRS="user_user:user-secret flight_user:flight-secret hotel_user:hotel-secret \
+inventory_user:inventory-secret travel_cart_user:travel-cart-secret booking_user:booking-secret \
+payment_user:payment-secret search_user:search-secret keycloak_user:keycloak-db-secret"
+SQL=""
+for p in $PAIRS; do
+  role="${p%%:*}"; secret="${p##*:}"
+  pw=$(kubectl -n atlas-data get secret "$secret" -o jsonpath='{.data.password}' | base64 -d)
+  SQL="${SQL}ALTER ROLE ${role} WITH LOGIN PASSWORD '${pw}';"$'\n'
+done
+printf '%s' "$SQL" | kubectl -n atlas-data exec -i atlas-pg-1 -c postgres -- \
+  psql -U postgres -d postgres -v ON_ERROR_STOP=1
+
+kubectl -n atlas-apps   rollout restart deploy
+kubectl -n atlas-system rollout restart statefulset keycloak
+```
+
+Run it under `bash` (the `${p%%:*}` splitting and `$PAIRS` word-splitting need it — `zsh` won't
+split an unquoted variable). The passwords are alphanumeric (the generator strips `/+=`), so the
+single-quoted `ALTER ROLE` is safe.
+
 ---
 
 ## Atlas services
@@ -926,3 +984,52 @@ Then re-run `bootstrap.sh` (idempotent) — the host patches now succeed.
 > at all, set `controller.admissionWebhooks.enabled: false` in
 > `deploy/platform/ingress-nginx/values.yaml` (you lose Ingress validation, but the whole race
 > disappears).
+
+### TS-ARGO-06 — Kafka never comes up (Strimzi CrashLoops, or the Kafka CR won't apply)
+
+**Symptom.** The `kafka-cluster` app is stuck `OutOfSync` with
+`one or more synchronization tasks are not valid`, there is **no Kafka CR** in `atlas-data`, and
+anything that needs the broker fails to resolve it:
+
+```
+KEDAScalerFailed … dial tcp: lookup atlas-kafka-bootstrap.atlas-data … no such host
+```
+
+The Strimzi operator pod is in `CrashLoopBackOff`, and its log ends with:
+
+```
+UnrecognizedPropertyException: Unrecognized field "emulationMajor" (class ...VersionInfo)
+```
+
+**Cause.** Two version-skew problems, both from an operator pin that is **older than what the
+cluster and the repo's own Kafka CR need**:
+
+1. **k8s too new for the operator.** Kubernetes 1.33+ adds `emulationMajor`/`emulationMinor` to
+   the `/version` response. The fabric8 client bundled in **Strimzi 0.45.x** can't deserialize it,
+   so the operator crashes on startup. Civo only offers 1.33+, so pinning k8s down is **not** an
+   escape — the operator has to move.
+2. **CR ahead of the CRDs.** `deploy/platform/strimzi/kafka.yaml` uses
+   `apiVersion: kafka.strimzi.io/v1` (GA'd in Strimzi 1.0) and `version: 4.3.0`. The 0.45.x chart
+   installs CRDs that only serve `v1beta2` and an operator that only knows Kafka ≤ 3.9, so Argo
+   can't even apply the CR (`no matches for kind`/invalid task).
+
+**Confirm:**
+
+```bash
+kubectl -n atlas-data logs deploy/strimzi-cluster-operator | grep -m1 emulationMajor
+kubectl get crd kafkas.kafka.strimzi.io -o jsonpath='{range .spec.versions[*]}{.name}{" "}{end}'  # only v1beta2 = too old
+```
+
+**Fix.** Bump the Strimzi operator to the **1.x** line, matched to the Kafka `version:` in the CR
+(1.1.0 ships the `v1` CRDs, supports Kafka 4.3.0, and runs on k8s 1.36). In
+[`deploy/argocd/apps/20-strimzi-operator.yaml`](argocd/apps/20-strimzi-operator.yaml):
+
+```yaml
+    targetRevision: 1.1.0   # was 0.45.0
+```
+
+Because Argo syncs from **origin/main**, commit and push this (see the GitOps note in
+`argocd/README.md`) — editing the running Application is reverted by self-heal. Once pushed, Argo
+replaces the CRDs (now serving `v1`) and rolls the operator; the Kafka CR then applies and the
+brokers come up. Keep the operator's `targetRevision` in step with the Kafka `version:` whenever
+either moves — that pairing is the whole bug.

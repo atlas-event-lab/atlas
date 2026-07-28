@@ -15,7 +15,8 @@
 # `kubeseal` and commit the SealedSecret. That path needs the sealed-secrets
 # controller in-cluster + the `kubeseal` CLI locally.
 #
-# Re-runnable (apply semantics). Requires: kubectl, openssl.
+# Idempotent: existing secrets keep their password on re-run (rotating it would desync the
+# CloudNativePG role — see make_secret). Requires: kubectl, openssl.
 # Usage:  ./create-db-secrets.sh
 # ─────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -24,7 +25,16 @@ set -euo pipefail
 make_secret() {
   local secret="$1" user="$2"; shift 2
   local namespaces=("$@")
-  local pw; pw="$(openssl rand -base64 18 | tr -d '/+=' | head -c 24)"
+  # IDEMPOTENT: reuse the existing password if the secret is already there. Regenerating on every
+  # run rotates the password, but CloudNativePG does NOT reliably re-apply a managed role's
+  # password on a secret-only change — so a re-run would leave the Postgres role on the OLD
+  # password while the services (and this secret) move to the NEW one → `password authentication
+  # failed for user "<svc>_user"` across the stack. Keep it stable. See TS-PLATFORM-09.
+  local pw
+  pw="$(kubectl -n "${namespaces[0]}" get secret "$secret" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)"
+  if [[ -z "$pw" ]]; then
+    pw="$(openssl rand -base64 18 | tr -d '/+=' | head -c 24)"
+  fi
   for ns in "${namespaces[@]}"; do
     kubectl create secret generic "$secret" -n "$ns" \
       --type=kubernetes.io/basic-auth \

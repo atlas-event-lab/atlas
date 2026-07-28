@@ -1,5 +1,11 @@
 # Wave 2 — Strimzi Kafka operator (ships the kafka.strimzi.io CRDs used by the wave-3 Kafka +
 # wave-4 KafkaTopics). Watches atlas-data.
+#
+# targetRevision MUST match what the Kafka CR needs. The CR (deploy/platform/strimzi/kafka.yaml)
+# uses apiVersion kafka.strimzi.io/v1 (GA'd in Strimzi 1.0) and Kafka 4.3.0 — neither exists in
+# the old 0.45.x line, whose CRDs only serve v1beta2. On k8s 1.33+ (Civo only offers 1.33+)
+# 0.45.0 also CrashLoopBackOffs on the `emulationMajor` VersionInfo field (fabric8 too old).
+# Keep this on the 1.x line and in step with the Kafka `version:` in the CR. See TS-ARGO-06.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -12,7 +18,7 @@ spec:
   source:
     repoURL: https://strimzi.io/charts
     chart: strimzi-kafka-operator
-    targetRevision: 0.45.0
+    targetRevision: 1.1.0
     helm:
       releaseName: strimzi
   destination:
