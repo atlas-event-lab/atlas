@@ -38,6 +38,7 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 | [TS-ARGO-05](#ts-argo-05--ingress-patch-fails-with-x509-certificate-signed-by-unknown-authority) | Argo CD | Ingress apply/patch fails: `x509: certificate signed by unknown authority` (empty webhook caBundle) |
 | [TS-ARGO-06](#ts-argo-06--kafka-never-comes-up-strimzi-crashloops-or-the-kafka-cr-wont-apply) | Argo CD | Kafka never comes up — Strimzi CrashLoopBackOff (`emulationMajor`) or the Kafka CR won't apply (`v1` vs `v1beta2`) |
 | [TS-ARGO-07](#ts-argo-07--apps-stuck-syncunknown-with-comparisonerror--terminatingreplicas) | Argo CD | Apps stuck `SYNC=Unknown` — `ComparisonError … .status.terminatingReplicas: field not declared in schema` |
+| [TS-ARGO-08](#ts-argo-08--kafka-broker-pvcs-stuck-terminating-kafka-cluster-never-healthy) | Argo CD | Kafka broker PVCs stuck `Terminating`, `kafka-cluster` never Healthy (Argo prunes Strimzi PVCs) |
 
 ---
 
@@ -1119,3 +1120,48 @@ kubectl -n argocd rollout restart statefulset argocd-application-controller
 
 The `ComparisonError` clears within a reconcile and the blocked apps sync. (Alternative: bump the
 Argo CD chart to a build whose bundled schema already knows the field.)
+
+### TS-ARGO-08 — Kafka broker PVCs stuck `Terminating`, `kafka-cluster` never Healthy
+
+**Symptom.** The Kafka brokers are `Running` and `kafka/atlas` reports `Ready`, yet the
+`kafka-cluster` app never goes Healthy — it sits `Progressing` on the broker PVCs
+(`data-0-atlas-dual-role-0/1/2`), which show `STATUS: Terminating` for as long as you watch
+(45+ minutes), even though the pods are using them.
+
+```bash
+kubectl -n atlas-data get pvc | grep dual-role     # Terminating, but the pods are Running
+kubectl -n atlas-data get pvc data-0-atlas-dual-role-0 \
+  -o jsonpath='{.metadata.deletionTimestamp} {.metadata.finalizers}'   # a deletionTimestamp + pvc-protection
+```
+
+**Cause.** Argo CD's default **resource tracking is by label** (`argocd.argoproj.io/instance`).
+Strimzi **copies the Kafka CR's labels onto every child object it creates** — including that
+tracking label, onto the dynamically-provisioned broker PVCs. Argo then believes it owns those
+PVCs, doesn't find them in git, and (with `prune: true`) **deletes them**. The `pvc-protection`
+finalizer keeps each PVC alive while its broker runs, so it hangs in `Terminating` indefinitely —
+and if a broker ever restarts, its volume is finalized out from under it. It is **not** a slow
+Civo volume (those bind in a couple of minutes) — confirm the `deletionTimestamp` above.
+
+**Fix — switch Argo to annotation-based tracking** (Strimzi copies labels, not annotations, so the
+PVCs stop looking Argo-owned). It's set for new clusters in
+[`argocd-values.yaml`](argocd/install/argocd-values.yaml)
+(`configs.cm."application.resourceTrackingMethod": annotation`), so a fresh `bootstrap.sh` never
+hits this. For a cluster already up:
+
+```bash
+kubectl -n argocd patch configmap argocd-cm --type merge \
+  -p '{"data":{"application.resourceTrackingMethod":"annotation"}}'
+kubectl -n argocd rollout restart statefulset argocd-application-controller
+```
+
+That stops future pruning, but a PVC already carrying a `deletionTimestamp` can't be un-deleted.
+On a lab cluster with **no Kafka data**, free and recreate them — Strimzi rebuilds each PVC (now
+untracked) and rebinds its broker:
+
+```bash
+kubectl -n atlas-data delete pod atlas-dual-role-0 atlas-dual-role-1 atlas-dual-role-2
+kubectl -n atlas-data get pvc -w   # the Terminating PVCs vanish, fresh Bound ones replace them
+```
+
+The same label-propagation trap applies to any operator that copies labels to children; annotation
+tracking is the general fix.

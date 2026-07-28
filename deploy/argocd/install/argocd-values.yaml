@@ -17,6 +17,16 @@ global:
   domain: argocd.0.0.0.0.nip.io
 
 configs:
+  cm:
+    # Track app resources by ANNOTATION, not the default label. Strimzi (and other operators)
+    # COPY their CR's labels onto every child object — including the `argocd.argoproj.io/instance`
+    # tracking label — onto the Kafka broker PVCs. With label tracking Argo then thinks it owns
+    # those dynamically-created PVCs, doesn't find them in git, and PRUNES them: each PVC gets a
+    # deletionTimestamp, the pvc-protection finalizer pins it while the broker runs, and it sits
+    # `Terminating` forever so `kafka-cluster` never goes Healthy (and a broker restart would lose
+    # its volume). Annotations are NOT propagated by Strimzi, so annotation tracking fixes it.
+    # See TS-ARGO-08.
+    application.resourceTrackingMethod: annotation
   params:
     # Ingress terminates TLS; talk plain HTTP to argocd-server (no self-signed cert hop).
     server.insecure: true
