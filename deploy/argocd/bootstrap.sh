@@ -147,8 +147,17 @@ ok "wiremock-mappings ConfigMap applied"
 log "Installing Argo CD (chart $ARGOCD_CHART_VERSION)"
 helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
 helm repo update argo >/dev/null
-helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace \
-  --version "$ARGOCD_CHART_VERSION" -f "$ARGO_DIR/install/argocd-values.yaml" --wait --timeout 15m
+if ! helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace \
+     --version "$ARGOCD_CHART_VERSION" -f "$ARGO_DIR/install/argocd-values.yaml" --wait --timeout 15m; then
+  warn 'Argo CD did not become Ready ("Progress deadline exceeded" / wait timeout).'
+  warn 'Most common cause on Civo: ONE worker node cannot start pods. See where they are stuck:'
+  warn '  kubectl -n argocd get pods -o wide'
+  warn 'If every not-Ready pod (ContainerCreating / Init) sits on the SAME node, that node is bad.'
+  warn 'Recycle it, clear the failed release, then re-run this script (idempotent):'
+  warn '  civo kubernetes recycle <cluster> --node <that-node> --region <nyc1|...>   # region LOWERCASE'
+  warn '  helm uninstall argocd -n argocd'
+  die  'See deploy/TROUBLESHOOTING.md TS-CIVO-02. Aborting so you do not chase a phantom config bug.'
+fi
 # Merge the CNPG/Strimzi/Keycloak custom health into the Helm-managed argocd-cm.
 kubectl -n argocd patch configmap argocd-cm --type merge \
   --patch-file "$ARGO_DIR/install/argocd-cm-health.yaml"
