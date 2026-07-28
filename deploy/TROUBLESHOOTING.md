@@ -13,6 +13,7 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 |----|------|-------|
 | [TS-CIVO-01](#ts-civo-01--civo-kubectl-cannot-connect-empty-kubeconfig-or-stale-ip-after-a-recreate) | Civo | `kubectl` cannot connect — empty kubeconfig (`localhost:8080 refused`) **or** stale IP after a recreate (`i/o timeout`) |
 | [TS-CIVO-02](#ts-civo-02--civo-a-pod-is-stuck-in-containercreating-failedcreatepodsandbox) | Civo | A pod is stuck in `ContainerCreating` for minutes (`FailedCreatePodSandBox`) — a bad node |
+| [TS-CIVO-03](#ts-civo-03--civo-terraform-destroy-fails-databasenetworkinusebyvolumes) | Civo | `terraform destroy` fails: `DatabaseNetworkInUseByVolumes` (orphaned CSI volumes block the network) |
 | [TS-OKE-01](#ts-oke-01--oke-terraform-init-provider-version-conflict) | Oracle OKE | `terraform init` — provider version conflict (`~> 6.0` vs `>= 8.19.0`) |
 | [TS-OKE-02](#ts-oke-02--oke-terraform-plan-fails-on-bastionoperator-images) | Oracle OKE | `terraform plan` — "Splat of null value" (bastion / operator) |
 | [TS-OKE-03](#ts-oke-03--oke-terraform-plan-fails-resolving-the-worker-image) | Oracle OKE | `terraform plan` — worker image "argument must not be null" |
@@ -145,6 +146,47 @@ re-run.)
 
 > **Whole cluster looks wrong, not just one node?** Then it isn't this — `terraform destroy &&
 > terraform apply` for a clean slate is the bigger hammer, but a single bad node never needs it.
+
+### TS-CIVO-03 — Civo: `terraform destroy` fails (`DatabaseNetworkInUseByVolumes`)
+
+**Symptom.** Tearing the cluster down, `terraform destroy` deletes the cluster but then hangs and
+fails on the **network**:
+
+```
+Error: error waiting for network (...) to be deleted: DatabaseNetworkInUseByVolumes:
+Failed to delete the network because it's in use by volumes, Network "cust-atlas-..." is used by
+"pvc-e110...,pvc-cdcd...,pvc-6a74...,..." volumes. Please delete the volumes first in order to
+delete the network.
+```
+
+**Cause.** The stack's stateful pods (the 3 Kafka brokers, Postgres, Loki, Tempo, Prometheus)
+each get a **Civo block volume** from the CSI driver — one `pvc-*` volume per PVC. Terraform never
+created them, so it can't delete them; they stay attached to the cluster's network and block its
+deletion. Normally `deploy/ops/civo/cluster.sh down` deletes the PVCs **first** (so the CSI frees
+the volumes) before running Terraform — but that step is skipped/ineffective if you ran
+`terraform destroy` directly, if `kubectl` couldn't reach the cluster (stale kubeconfig —
+[TS-CIVO-01](#ts-civo-01--civo-kubectl-cannot-connect-empty-kubeconfig-or-stale-ip-after-a-recreate)),
+or if the PVCs were stuck `Terminating`. By the time this error appears the cluster is usually
+already gone, so the volumes can only be cleaned through the Civo API.
+
+**Fix — delete the orphaned volumes, then finish the destroy:**
+
+```bash
+# List the leftover volumes on the cluster's network (region LOWERCASE — see TS-CIVO-01).
+civo volume ls --region nyc1
+
+# Delete each pvc-* volume shown (they read `available` = detached, safe to delete).
+civo volume delete <volume-id> --region nyc1 -y      # repeat per id, or:
+civo volume ls --region nyc1 -o custom -f ID | while read -r id; do civo volume delete "$id" --region nyc1 -y; done
+
+# Re-run destroy — only the network is left, and it deletes in ~10s.
+cd deploy/cluster/civo/terraform && terraform destroy
+```
+
+> **Prevent it:** use `./deploy/ops/civo/cluster.sh down` (not a bare `terraform destroy`) — it
+> releases the PVCs while the cluster is still reachable, and now also sweeps any orphaned volumes
+> as a fallback if the destroy fails. It needs `kubectl` pointed at the cluster **before** you
+> tear it down, so fix a stale kubeconfig first.
 
 ### TS-OKE-01 — OKE: `terraform init` provider version conflict
 

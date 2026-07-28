@@ -104,11 +104,38 @@ release_volumes() {
   log "A PV stuck here usually has reclaimPolicy: Retain (deliberately kept) or a finalizer."
 }
 
+# Fallback for `down`: if Terraform failed to delete the network because CSI block volumes are
+# still attached (`DatabaseNetworkInUseByVolumes`), delete those orphaned volumes through the Civo
+# API so a retried destroy can remove the network. This covers the cases release_volumes can't —
+# a bare `terraform destroy`, an unreachable kubectl, or PVCs stuck Terminating. See TS-CIVO-03.
+sweep_orphaned_volumes() {
+  if ! command -v civo >/dev/null 2>&1; then
+    log "civo CLI not installed — delete leftover volumes by hand: civo volume ls ; civo volume delete <id>"
+    return 0
+  fi
+  local region net id
+  region="$(grep -E '^[[:space:]]*region' "$TF_DIR/terraform.tfvars" 2>/dev/null \
+            | sed -E 's/.*=[[:space:]]*"?([A-Za-z0-9]+)"?.*/\1/' | tr '[:upper:]' '[:lower:]')"
+  [ -z "$region" ] && region="$(civo region current 2>/dev/null || true)"
+  net="${CLUSTER_NAME}-net"
+  log "Sweeping orphaned volumes on network '${net}' (region '${region:-?}')..."
+  civo volume ls --region "$region" -o custom -f ID,Network 2>/dev/null \
+    | awk -v n="$net" '$2==n{print $1}' \
+    | while read -r id; do
+        [ -n "$id" ] && { log "  deleting volume $id"; civo volume delete "$id" --region "$region" -y >/dev/null 2>&1 || true; }
+      done
+}
+
 cmd_down() {
   log "This will DESTROY cluster '$CLUSTER_NAME' and stop all billing."
   log "PVC data is lost unless volumes use reclaimPolicy: Retain."
   release_volumes            # MUST run first — see the note above
-  terraform -chdir="$TF_DIR" destroy
+  if ! terraform -chdir="$TF_DIR" destroy; then
+    log "Terraform destroy failed. If it was DatabaseNetworkInUseByVolumes, orphaned CSI volumes"
+    log "are blocking the network — sweeping them and retrying once (see TROUBLESHOOTING TS-CIVO-03)."
+    sweep_orphaned_volumes
+    terraform -chdir="$TF_DIR" destroy
+  fi
 }
 
 cmd_status() {

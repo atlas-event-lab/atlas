@@ -74,11 +74,17 @@ Civo has no "stop"; the off switch is destroying the cluster (stops all billing)
 terraform destroy        # from this folder — $0 while down
 ```
 
-Or use the wrapper [`deploy/ops/civo/cluster.sh`](../../../ops/civo) (`up`/`down`/`status`).
+**Prefer the wrapper** [`deploy/ops/civo/cluster.sh`](../../../ops/civo) (`up`/`down`/`status`)
+over a bare `terraform destroy` for teardown. A raw `destroy` fails on the last step with
+`DatabaseNetworkInUseByVolumes`: the stateful pods (Kafka, Postgres, observability) each get a
+Civo **block volume** that Terraform didn't create and can't delete, so the volumes orphan and
+block the network. `cluster.sh down` deletes the PVCs first (letting the CSI free the volumes) and
+sweeps any leftovers as a fallback. If you already hit the error, see
+[TROUBLESHOOTING TS-CIVO-03](../../../TROUBLESHOOTING.md#ts-civo-03--civo-terraform-destroy-fails-databasenetworkinusebyvolumes).
 
-> ⚠️ **Data:** `destroy` deletes dynamically-provisioned PVCs (Postgres/Kafka) unless their
-> PVs use `reclaimPolicy: Retain`. Treat the cluster as ephemeral and re-seed on `up`
-> (the experiments already reset state), or switch to Retain if you must persist data.
+> ⚠️ **Data:** teardown removes those volumes, so PVC data (Postgres/Kafka) is **lost** unless the
+> PVs use `reclaimPolicy: Retain`. Treat the cluster as ephemeral and re-seed on `up` (the
+> experiments already reset state), or switch to Retain if you must persist data.
 
 ## Notes
 
