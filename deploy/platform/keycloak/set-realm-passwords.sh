@@ -68,6 +68,26 @@ http_post() {  # http_post URL [curl args...] -> sets HTTP_CODE and HTTP_BODY
   HTTP_BODY="${raw%$'\n'*}"
 }
 
+# Wait for Keycloak to actually SERVE through the public Ingress before authenticating. On a
+# fresh cluster keycloak-0 takes minutes to boot (Quarkus augmentation on first start) and may
+# restart during convergence, so the route returns 503 / is unreachable for a while — the realm
+# import reporting `Done` only means the operator reached the INTERNAL service, not that the
+# public host is live. Poll instead of failing on the first 503 (the old behaviour, which forced
+# a manual re-run). Override the budget with KC_WAIT.
+wait_for_keycloak() {
+  local wait="${KC_WAIT:-300}" waited=0 code
+  echo ">> Waiting for Keycloak to serve ${KEYCLOAK_URL} (up to ${wait}s)..."
+  while :; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' \
+      "${KEYCLOAK_URL}/realms/${ADMIN_REALM}/.well-known/openid-configuration" 2>/dev/null || echo 000)
+    [[ "$code" == "200" ]] && { echo ">> Keycloak is serving (HTTP 200)."; return 0; }
+    (( waited >= wait )) && { echo "!! Keycloak still not ready (HTTP ${code}) after ${wait}s." >&2; return 1; }
+    printf '   not ready yet (HTTP %s); retrying… (%ss/%ss)\n' "$code" "$waited" "$wait"
+    sleep 10; waited=$((waited + 10))
+  done
+}
+wait_for_keycloak || die "Keycloak never became reachable at ${KEYCLOAK_URL} — check: kubectl -n ${NS_SYSTEM} get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
+
 echo ">> Authenticating as '${KEYCLOAK_ADMIN_USER}' against ${KEYCLOAK_URL}/realms/${ADMIN_REALM}"
 http_post "${KEYCLOAK_URL}/realms/${ADMIN_REALM}/protocol/openid-connect/token" \
   -d grant_type=password -d "client_id=${ADMIN_CLIENT}" \
