@@ -264,13 +264,15 @@ if [[ "$REALM_READY" == true ]]; then
     ok "atlas-user and atlas-admin can now log in"
   else
     warn "set-realm-passwords.sh failed — re-run it manually: LB=$LB ./deploy/platform/keycloak/set-realm-passwords.sh"
-    REALM_READY=false
+    # Do NOT flip REALM_READY here: the load-test seeding below is INDEPENDENT of this step
+    # (it creates its own loadtest-N users with the loadtest-password). Gating it on this step's
+    # success is what silently skipped the whole pool when this hit a transient Keycloak 503.
   fi
 fi
 
 # 13. Load-test user pool. travel-cart keeps ONE active cart per user, so k6 needs one user per
 # VU — sharing an identity makes every VU collide on the same cart. Keycloak-only, so this does
-# not wait on the services.
+# not wait on the services. Gated only on the realm being imported (REALM_READY), NOT on step 12.
 if [[ "$REALM_READY" == true && "$LOADTEST_USERS" != "0" ]]; then
   log "Seeding $LOADTEST_USERS load-test users (--loadtest-users 0 to skip)"
   ADMIN_USER="$(kubectl -n atlas-system get secret keycloak-initial-admin \

@@ -79,6 +79,23 @@ fetch_admin_token() {
   [[ -n "$ADMIN_TOKEN" ]] || die "could not obtain admin token — check admin credentials. Response: $resp"
 }
 
+# Wait for Keycloak to actually SERVE through the Ingress before authenticating. On a fresh
+# cluster keycloak-0 boots slowly (Quarkus augmentation) and can restart during convergence, so
+# the public route 503s / is unreachable for a while. Without this, seeding (whether from
+# bootstrap or run by hand mid-convergence) fails fast on the admin-token request. Override the
+# budget with KC_WAIT (seconds).
+wait_for_keycloak() {
+  local wait="${KC_WAIT:-300}" waited=0 code
+  log "Waiting for Keycloak to serve $KEYCLOAK_URL (up to ${wait}s)..."
+  while :; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' \
+      "$KEYCLOAK_URL/realms/$ADMIN_REALM/.well-known/openid-configuration" 2>/dev/null || echo 000)"
+    [[ "$code" == "200" ]] && { log "Keycloak is serving (HTTP 200)."; return 0; }
+    (( waited >= wait )) && die "Keycloak not reachable at $KEYCLOAK_URL after ${wait}s (HTTP $code)"
+    sleep 10; waited=$((waited + 10))
+  done
+}
+
 # kc_api METHOD PATH [JSON_BODY]
 # Echoes the HTTP status code; the response body is left in $BODY_FILE.
 # Transparently refreshes the (short-lived) admin token once on a 401 and retries.
@@ -161,6 +178,7 @@ main() {
   validate_config
 
   log "Seeding users '${USER_PREFIX}1'..'${USER_PREFIX}${USER_COUNT}' in realm '$REALM' at $KEYCLOAK_URL"
+  wait_for_keycloak
   fetch_admin_token
 
   local created=0 existed=0 i username status
