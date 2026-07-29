@@ -1,20 +1,39 @@
 # GitOps for Atlas (Argo CD)
 
-Deploy Atlas with `terraform apply` + **one** `bootstrap.sh`, then watch the whole stack converge **wave by wave** in the Argo CD UI. Self-heals, surfaces errors visually, it deploys the manifests under [`deploy/platform/`](../platform) and the Helm chart under [`deploy/helm/atlas-service/`](../helm/atlas-service). GitOps just drives them declaratively.
+Deploy Atlas and watch the whole stack converge **wave by wave** in the Argo CD UI. Self-heals, surfaces errors visually, it deploys the manifests under [`deploy/platform/`](../platform) and the Helm chart under [`deploy/helm/atlas-service/`](../helm/atlas-service). GitOps just drives them declaratively.
 
 ---
 
 ## Quick start
 
-```bash
-# 1. Provision a cluster (skip if you already have one + kubectl context).
-cd deploy/cluster/civo/terraform && terraform apply    # or OKE — see deploy/cluster/README.md
-./save-kubeconfig.sh                                    # writes ~/.kube/civo-atlas.yaml reliably
-export KUBECONFIG=~/.kube/civo-atlas.yaml               #   (falls back to the Civo CLI if terraform's kubeconfig is empty)
-kubectl get nodes                                      # expect 3 Ready nodes BEFORE step 2
-cd -                                                   # back to the repo root for step 2
+1. Provision a cluster and point kubectl at it — pick your vendor (Oracle OKE, Civo, …).
 
-# 2. Bootstrap (from the repo root). No arguments needed.
+#### Option A - Oracle
+```bash
+cd deploy/cluster/oracle/terraform   # from repo root
+cp terraform.tfvars.example terraform.tfvars   # your OCIDs, region, ssh key
+terraform init && terraform apply
+```
+
+#### Option B - Civo
+```bash
+cd deploy/cluster/civo/terraform      # from repo root
+export CIVO_TOKEN="your-civo-api-key"
+terraform init && terraform apply
+./save-kubeconfig.sh && export KUBECONFIG=~/.kube/civo-atlas.yaml
+```
+
+After the cluster is ready, verify that all nodes are healthy:
+
+```bash
+kubectl get nodes                                      # expect 3 Ready nodes BEFORE step 2
+```
+
+All the steps below are vendor-agnostic:
+
+```
+# 2. Bootstrap (from the repo root). Vendor-agnostic — runs against whatever cluster your
+#    kubectl points at. No arguments needed.
 ./deploy/argocd/bootstrap.sh
 
 # 3. Open the Argo CD UI from the printed URL card and watch it go green.
