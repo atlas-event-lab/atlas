@@ -1,11 +1,14 @@
 # Copy to terraform.tfvars and fill in YOUR values. terraform.tfvars is gitignored.
-# Find OCIDs in the OCI Console (Identity → Compartments / Tenancy details) or via:
-#   oci iam compartment list --query 'data[].{name:name,id:id}' --output table
+# What each OCID is and how to obtain it: README.md → "The values you must provide".
 
+# compartment_id: where the cluster is created. Use a compartment OCID
+# (oci iam compartment list --query 'data[].{name:name,id:id}' --output table), or set it
+# to tenancy_id to deploy into the root compartment. NOT a node-pool OCID (ocid1.nodepool…).
 compartment_id      = "ocid1.compartment.oc1..xxxxxxxx"
+# tenancy_id: your whole OCI account. It's the tenancy= line in ~/.oci/config.
 tenancy_id          = "ocid1.tenancy.oc1..xxxxxxxx"
-region              = "us-ashburn-1"
-home_region         = "us-ashburn-1"
+region              = "us-ashburn-1"   # where the cluster runs
+home_region         = "us-ashburn-1"   # Administration → Tenancy details → Home Region
 ssh_public_key_path = "~/.ssh/id_rsa.pub"
 
 # Optional overrides (defaults reproduce the reference cluster):
@@ -15,7 +18,13 @@ ssh_public_key_path = "~/.ssh/id_rsa.pub"
 # worker_ocpus       = 2      # 1 OCPU = 2 vCPU -> 4 vCPU/node
 # worker_memory_gb   = 16
 
+# Who can reach the PUBLIC Kubernetes API endpoint (6443). Defaults to 0.0.0.0/0 (anywhere,
+# still behind OCI token auth + TLS) so kubectl works out of the box. To lock it to your own
+# machine, uncomment and set your public IP (curl -s ifconfig.me) — re-run `terraform apply`
+# after any IP change:
+# control_plane_allowed_cidrs = ["203.0.113.4/32"]
+
 # If `terraform plan` fails resolving the worker image (empty node-pool sources), set the
 # OKE node-image OCID explicitly. Find it (pick the OKE-<version> x86_64 non-GPU entry):
 #   oci ce node-pool-options get --node-pool-option-id all --query 'data.sources' --output table
-# worker_image_id = "ocid1.image.oc1.iad.aaaaaaaa..."
+# worker_image_id    = "ocid1.image.oc1.iad.aaaaaaaasgnrmswt7t6aezt7gndiipkupyyaboekzhfxufgbxlepe7jjpjka"

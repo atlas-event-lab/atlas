@@ -276,28 +276,10 @@ if [[ "$REALM_READY" == true ]]; then
   fi
 fi
 
-# 13. Load-test user pool. travel-cart keeps ONE active cart per user, so k6 needs one user per
-# VU — sharing an identity makes every VU collide on the same cart. Keycloak-only, so this does
-# not wait on the services. Gated only on the realm being imported (REALM_READY), NOT on step 12.
-if [[ "$REALM_READY" == true && "$LOADTEST_USERS" != "0" ]]; then
-  log "Seeding $LOADTEST_USERS load-test users (--loadtest-users 0 to skip)"
-  ADMIN_USER="$(kubectl -n atlas-system get secret keycloak-initial-admin \
-                  -o jsonpath='{.data.username}' | base64 -d)"
-  ADMIN_PASS="$(kubectl -n atlas-system get secret keycloak-initial-admin \
-                  -o jsonpath='{.data.password}' | base64 -d)"
-  LOADTEST_PASS="$(kubectl -n atlas-system get secret atlas-realm-credentials \
-                  -o jsonpath='{.data.loadtest-password}' | base64 -d)"
-  if KEYCLOAK_URL="http://keycloak.$LB.nip.io" \
-     KEYCLOAK_ADMIN_USER="$ADMIN_USER" KEYCLOAK_ADMIN_PASSWORD="$ADMIN_PASS" \
-     LOADTEST_USER_PASSWORD="$LOADTEST_PASS" LOADTEST_USER_COUNT="$LOADTEST_USERS" \
-     bash "$REPO_ROOT/experiments/scripts/seed-loadtest-users.sh"; then
-    ok "Load-test pool ready ($LOADTEST_USERS users)"
-  else
-    warn "seed-loadtest-users.sh failed — see experiments/README.md § 'Auth for load tests'"
-  fi
-fi
-
-# 14. URL card.
+# 13. URL card. Printed BEFORE the (optional, slow) load-test seeding below so the access
+# details are on screen while Argo converges and while the pool seeds — the card depends only
+# on values already resolved above (LB, the Argo/Keycloak/Kafka secrets, the requested pool
+# size), never on anything the seeding produces.
 ARGO_PW="$(kubectl -n argocd get secret argocd-initial-admin-secret \
            -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo '<already-rotated>')"
 KC_ADMIN_USER="$(kubectl -n atlas-system get secret keycloak-initial-admin \
@@ -333,4 +315,28 @@ cat <<EOF
 │  Fallback (no ingress host): kubectl -n argocd port-forward svc/argocd-server 8080:443
 └─────────────────────────────────────────────────────────────────────────────
 EOF
+
+# 14. Load-test user pool. travel-cart keeps ONE active cart per user, so k6 needs one user per
+# VU — sharing an identity makes every VU collide on the same cart. Keycloak-only, so this does
+# not wait on the services. Gated only on the realm being imported (REALM_READY), NOT on step 12.
+# Runs LAST (after the card above) because seeding a large pool can take many minutes and must
+# not delay the access details reaching the operator. Skip it entirely with --loadtest-users 0.
+if [[ "$REALM_READY" == true && "$LOADTEST_USERS" != "0" ]]; then
+  log "Seeding $LOADTEST_USERS load-test users — this can take a while (--loadtest-users 0 to skip)"
+  ADMIN_USER="$(kubectl -n atlas-system get secret keycloak-initial-admin \
+                  -o jsonpath='{.data.username}' | base64 -d)"
+  ADMIN_PASS="$(kubectl -n atlas-system get secret keycloak-initial-admin \
+                  -o jsonpath='{.data.password}' | base64 -d)"
+  LOADTEST_PASS="$(kubectl -n atlas-system get secret atlas-realm-credentials \
+                  -o jsonpath='{.data.loadtest-password}' | base64 -d)"
+  if KEYCLOAK_URL="http://keycloak.$LB.nip.io" \
+     KEYCLOAK_ADMIN_USER="$ADMIN_USER" KEYCLOAK_ADMIN_PASSWORD="$ADMIN_PASS" \
+     LOADTEST_USER_PASSWORD="$LOADTEST_PASS" LOADTEST_USER_COUNT="$LOADTEST_USERS" \
+     bash "$REPO_ROOT/experiments/scripts/seed-loadtest-users.sh"; then
+    ok "Load-test pool ready ($LOADTEST_USERS users)"
+  else
+    warn "seed-loadtest-users.sh failed — see experiments/README.md § 'Auth for load tests'"
+  fi
+fi
+
 ok "Bootstrap complete."

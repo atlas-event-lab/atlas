@@ -65,34 +65,40 @@ validate_config() {
 }
 
 # ── Keycloak Admin API ───────────────────────────────────────────────────────
-fetch_admin_token() {
-  local resp
-  resp="$(curl -sS -X POST \
-    "$KEYCLOAK_URL/realms/$ADMIN_REALM/protocol/openid-connect/token" \
-    -H 'Content-Type: application/x-www-form-urlencoded' \
-    -d 'grant_type=password' \
-    -d "client_id=$ADMIN_CLIENT" \
-    --data-urlencode "username=$ADMIN_USER" \
-    --data-urlencode "password=$ADMIN_PASSWORD")" \
-    || die "admin token request failed (is $KEYCLOAK_URL reachable?)"
-  ADMIN_TOKEN="$(jq -r '.access_token // empty' <<<"$resp")"
-  [[ -n "$ADMIN_TOKEN" ]] || die "could not obtain admin token — check admin credentials. Response: $resp"
-}
-
-# Wait for Keycloak to actually SERVE through the Ingress before authenticating. On a fresh
+# Acquire an admin token, retrying through Keycloak's first-boot readiness flaps. On a fresh
 # cluster keycloak-0 boots slowly (Quarkus augmentation) and can restart during convergence, so
-# the public route 503s / is unreachable for a while. Without this, seeding (whether from
-# bootstrap or run by hand mid-convergence) fails fast on the admin-token request. Override the
-# budget with KC_WAIT (seconds).
-wait_for_keycloak() {
-  local wait="${KC_WAIT:-300}" waited=0 code
-  log "Waiting for Keycloak to serve $KEYCLOAK_URL (up to ${wait}s)..."
+# the public route can serve a 200 on one request and 503 on the very next while it flaps
+# Ready↔NotReady. Polling well-known for a single 200 and then authenticating once still races
+# into a 503 on the token call. We therefore make the TOKEN request itself the readiness gate:
+# retry transient failures (000 unreachable / 502 / 503 / 504) until KC_WAIT is spent, and fail
+# fast only on definitive errors (401 wrong creds, 404 misrouted Ingress). This also covers the
+# short refresh path: kc_api re-invokes it on a 401 mid-run, where Keycloak is already healthy
+# and it returns on the first attempt. Override the budget with KC_WAIT (seconds).
+fetch_admin_token() {
+  local wait="${KC_WAIT:-300}" waited=0 interval=10 raw rc code body
   while :; do
-    code="$(curl -s -o /dev/null -w '%{http_code}' \
-      "$KEYCLOAK_URL/realms/$ADMIN_REALM/.well-known/openid-configuration" 2>/dev/null || echo 000)"
-    [[ "$code" == "200" ]] && { log "Keycloak is serving (HTTP 200)."; return 0; }
-    (( waited >= wait )) && die "Keycloak not reachable at $KEYCLOAK_URL after ${wait}s (HTTP $code)"
-    sleep 10; waited=$((waited + 10))
+    rc=0
+    raw="$(curl -sS -w $'\n%{http_code}' -X POST \
+      "$KEYCLOAK_URL/realms/$ADMIN_REALM/protocol/openid-connect/token" \
+      -H 'Content-Type: application/x-www-form-urlencoded' \
+      -d 'grant_type=password' \
+      -d "client_id=$ADMIN_CLIENT" \
+      --data-urlencode "username=$ADMIN_USER" \
+      --data-urlencode "password=$ADMIN_PASSWORD" 2>/dev/null)" || rc=$?
+    if (( rc != 0 )); then code=000; body=""; else code="${raw##*$'\n'}"; body="${raw%$'\n'*}"; fi
+    case "$code" in
+      200)
+        ADMIN_TOKEN="$(jq -r '.access_token // empty' <<<"$body")"
+        [[ -n "$ADMIN_TOKEN" ]] && return 0
+        die "could not obtain admin token — no access_token in response: $(printf '%.200s' "$body")" ;;
+      401) die "admin login rejected — check KEYCLOAK_ADMIN_USER / KEYCLOAK_ADMIN_PASSWORD." ;;
+      404) die "HTTP 404 from $KEYCLOAK_URL — the Keycloak Ingress is not routing (TS-PLATFORM-04)." ;;
+      000|502|503|504)
+        (( waited >= wait )) && die "Keycloak still returning HTTP $code after ${wait}s — check: kubectl -n atlas-system get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
+        log "  Keycloak not ready (HTTP $code); retrying… (${waited}s/${wait}s)"
+        sleep "$interval"; waited=$((waited + interval)) ;;
+      *) die "admin token request returned HTTP $code: $(printf '%.200s' "$body")" ;;
+    esac
   done
 }
 
@@ -178,8 +184,7 @@ main() {
   validate_config
 
   log "Seeding users '${USER_PREFIX}1'..'${USER_PREFIX}${USER_COUNT}' in realm '$REALM' at $KEYCLOAK_URL"
-  wait_for_keycloak
-  fetch_admin_token
+  fetch_admin_token   # retries through Keycloak's first-boot readiness flaps (see its comment)
 
   local created=0 existed=0 i username status
   for ((i = 1; i <= USER_COUNT; i++)); do

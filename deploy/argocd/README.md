@@ -11,14 +11,23 @@ Deploy Atlas and watch the whole stack converge **wave by wave** in the Argo CD 
 #### Option A - Oracle
 ```bash
 cd deploy/cluster/oracle/terraform   # from repo root
-cp terraform.tfvars.example terraform.tfvars   # your OCIDs, region, ssh key
-terraform init && terraform apply
+cp terraform.tfvars.example terraform.tfvars   # fill in YOUR OCIDs, region, ssh key path
+terraform init
+terraform plan                                 # review
+terraform apply                                # ~15-20 min (network + cluster + nodes)
+
+# point kubectl at it:
+oci ce cluster create-kubeconfig \
+  --cluster-id "$(terraform output -raw cluster_id)" \
+  --file ~/.kube/config --region <your-region> --token-version 2.0.0 \
+  --kube-endpoint PUBLIC_ENDPOINT
 ```
+See [Oracle-cluster](../cluster/oracle/terraform/README.md) for more details
 
 #### Option B - Civo
 ```bash
 cd deploy/cluster/civo/terraform      # from repo root
-export CIVO_TOKEN="your-civo-api-key" #got to your civo Dashboard (Account → Security → API keys)
+export CIVO_TOKEN="your-civo-api-key" #go to your civo Dashboard (Account → Security → API keys)
 terraform init && terraform apply
 ./save-kubeconfig.sh
 export KUBECONFIG=~/.kube/civo-atlas.yaml
@@ -78,7 +87,7 @@ open** when you publish the catalog, so you watch the events flow instead of rea
 afterwards. `LB` is the IP printed on the bootstrap card.
 
 ```bash
-LB=<the IP from the bootstrap card>
+LB=<the IP from the bootstrap card> # or use: kubectl -n atlas-system get svc ingress-nginx-controller (EXTERNAL-IP = LoadBalancer IP)
 ```
 
 ### Argo CD — the deployment itself

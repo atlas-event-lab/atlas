@@ -17,6 +17,7 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 | [TS-OKE-01](#ts-oke-01--oke-terraform-init-provider-version-conflict) | Oracle OKE | `terraform init` — provider version conflict (`~> 6.0` vs `>= 8.19.0`) |
 | [TS-OKE-02](#ts-oke-02--oke-terraform-plan-fails-on-bastionoperator-images) | Oracle OKE | `terraform plan` — "Splat of null value" (bastion / operator) |
 | [TS-OKE-03](#ts-oke-03--oke-terraform-plan-fails-resolving-the-worker-image) | Oracle OKE | `terraform plan` — worker image "argument must not be null" |
+| [TS-OKE-04](#ts-oke-04--oke-kubectl-times-out-on-the-public-api-endpoint-io-timeout) | Oracle OKE | `kubectl` times out on the public API endpoint (`dial tcp …:6443: i/o timeout`) |
 | [TS-PLATFORM-01](#ts-platform-01--permission-denied-running-a-sh-script) | Platform | `permission denied` running a `.sh` script |
 | [TS-PLATFORM-02](#ts-platform-02--postgres-initdb-pod-stuck-pending-unbound-pvc) | Platform | Postgres `initdb` pod stuck `Pending` — unbound PVC |
 | [TS-PLATFORM-03](#ts-platform-03--metrics-server-metrics-api-not-available) | Platform | `kubectl top` / HPA: "Metrics API not available" |
@@ -232,17 +233,38 @@ their images.
 
 ### TS-OKE-03 — OKE: `terraform plan` fails resolving the worker image
 
-**Symptom.** `plan` errors in `modules/workers/locals.tf`:
-`Invalid value for "other_sets" parameter: argument must not be null`, with
-`var.image_ids is object with 6 attributes`. Changing `kubernetes_version` doesn't help.
+> **Default is auto-resolve — leave `worker_image_id` unset.** Current `oci` providers
+> (verified on **8.24.0**, 2026-07-22) resolve the OKE node image from `kubernetes_version`
+> correctly. `worker_image_id` is an **optional fallback**, not a required input. The two
+> symptoms below are (A) older providers that returned an empty image list, and (B) the
+> mismatch you get when you *do* pin an OCID that doesn't match your k8s version.
 
-**Cause.** The module resolves the worker OKE image from the k8s version via a data source
-whose `sources` attribute comes back **empty on the `oci` provider v8.x** — so no
-version-keyed image is ever found, regardless of which version you pin.
+**Symptom A (empty resolution — older providers).** `plan` errors in
+`modules/workers/locals.tf`: `Invalid value for "other_sets" parameter: argument must not be
+null`, with `var.image_ids is object with 6 attributes`. Changing `kubernetes_version`
+doesn't help.
 
-**Fix.** Pass an explicit node-image OCID (bypasses the auto-resolution). List the images,
-pick the `OKE-<version>` **x86_64, non-GPU** one, and set it in `terraform.tfvars` — the
-image's version and `kubernetes_version` must match:
+**Cause A.** The module resolves the worker OKE image via a data source whose `sources`
+attribute came back **empty on older `oci` provider builds** — so no version-keyed image was
+ever found. This is fixed on current providers; if you hit it, upgrade the provider first
+(`terraform init -upgrade`) before reaching for the fallback below.
+
+**Symptom B (version mismatch — you pinned an OCID).** `apply` fails creating the node pool:
+`409-Conflict, Kubernetes version does not match Kubernetes version of OKE worker node image
+(v1.34.2)`.
+
+**Cause B.** `worker_image_id` is set to a node image built for a **different** k8s version
+than `kubernetes_version` (e.g. a `v1.34.2` image against a `v1.36.0` cluster). The image
+carries its k8s version and OCI rejects the mismatch.
+
+**Fix.**
+
+- **Preferred:** leave `worker_image_id` unset (commented out) and let the module
+  auto-resolve the image that matches `kubernetes_version`. This makes the mismatch
+  impossible by construction.
+- **Only if auto-resolution returns empty on your provider/region:** pass an explicit
+  node-image OCID, picking the `OKE-<version>` **x86_64, non-GPU** entry whose version
+  **equals** `kubernetes_version`:
 
 ```bash
 oci ce node-pool-options get --node-pool-option-id all \
@@ -251,8 +273,44 @@ oci ce node-pool-options get --node-pool-option-id all \
 ```hcl
 # terraform.tfvars
 kubernetes_version = "v1.34.2"
-worker_image_id    = "ocid1.image.oc1.iad.aaaa..."   # OKE-1.34.2 x86_64 non-GPU
+worker_image_id    = "ocid1.image.oc1.iad.aaaa..."   # OKE-1.34.2 x86_64 non-GPU (must match)
 ```
+
+---
+
+### TS-OKE-04 — OKE: `kubectl` times out on the public API endpoint (`i/o timeout`)
+
+**Symptom.** `apply` succeeds and `oci ce cluster create-kubeconfig` merges the config, but
+every `kubectl` call hangs ~30s and fails:
+
+```
+E… memcache.go:265] couldn't get current server API group list: Get "https://<ip>:6443/api?timeout=32s": dial tcp <ip>:6443: i/o timeout
+Unable to connect to the server: dial tcp <ip>:6443: i/o timeout
+```
+
+**Cause.** The control plane endpoint is public, but the OKE module's
+`control_plane_allowed_cidrs` defaults to `[]` — so its NSG has **no ingress rule** for
+TCP 6443 and drops every connection. A public endpoint is not the same as an *open* one.
+
+**Fix.** Allow-list the CIDRs that may reach 6443 via the `control_plane_allowed_cidrs`
+input (wired through `main.tf` → the module). The Atlas config defaults it to `["0.0.0.0/0"]`,
+so a plain re-apply opens it:
+
+```bash
+terraform apply            # adds the 6443 ingress rule to the control-plane NSG
+kubectl get nodes          # now reachable
+```
+
+To restrict it to your workstation instead of the whole internet, set your public IP in
+`terraform.tfvars` and re-apply (update it whenever your IP changes):
+
+```hcl
+# terraform.tfvars
+control_plane_allowed_cidrs = ["203.0.113.4/32"]   # curl -s ifconfig.me
+```
+
+> The endpoint is always behind OCI-signed token auth + TLS, so `0.0.0.0/0` is authenticated,
+> not anonymous — but a `/32` is the smaller attack surface for anything beyond a lab.
 
 ---
 

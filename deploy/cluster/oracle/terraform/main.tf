@@ -53,6 +53,9 @@ module "oke" {
   kubernetes_version                = var.kubernetes_version
   control_plane_is_public           = true
   assign_public_ip_to_control_plane = true
+  # Open ingress to the public API endpoint (6443). The module opens nothing by default, so
+  # without this kubectl times out. Restrict via var.control_plane_allowed_cidrs if desired.
+  control_plane_allowed_cidrs = var.control_plane_allowed_cidrs
   # VCN-native pod networking (each pod gets a VCN IP), matching the original cluster.
   # Switch to "flannel" for an overlay if you prefer to conserve VCN IPs.
   cni_type = "npn"

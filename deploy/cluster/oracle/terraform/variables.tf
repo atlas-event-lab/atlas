@@ -37,6 +37,17 @@ variable "services_cidr" {
   type    = string
   default = "10.96.0.0/16"
 }
+variable "control_plane_allowed_cidrs" {
+  description = <<-EOT
+    CIDRs allowed to reach the PUBLIC Kubernetes API endpoint (TCP 6443). The OKE module
+    opens no ingress by default, so with an empty list kubectl times out ("i/o timeout")
+    even though the endpoint is public. ["0.0.0.0/0"] makes it reachable from anywhere
+    (still protected by OCI-signed token auth + TLS). To restrict it to your workstation,
+    set ["<your-public-ip>/32"] — find it with:  curl -s ifconfig.me
+  EOT
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
 
 # --- Network ---
 variable "vcn_name" {

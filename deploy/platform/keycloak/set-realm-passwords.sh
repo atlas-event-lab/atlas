@@ -59,51 +59,50 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 # Never pipe curl straight into jq: a non-JSON body (an nginx 404/503 HTML page is the
 # common one) surfaces as an opaque `jq: parse error` instead of the real problem. Capture
 # the status and the body, judge the status first.
-http_post() {  # http_post URL [curl args...] -> sets HTTP_CODE and HTTP_BODY
+http_post() {  # http_post URL [curl args...] -> sets HTTP_CODE and HTTP_BODY (000 = unreachable)
   local url="$1"; shift
-  local raw
-  raw=$(curl -sS -w $'\n%{http_code}' "$url" "$@") \
-    || die "could not reach ${url} — is the Keycloak Ingress up? (Runbook Step 5)"
+  local raw rc=0
+  # Do NOT die on a connection failure: the caller's retry loop treats 000 as transient
+  # (Keycloak/Ingress not up for THIS request yet) and keeps polling.
+  raw=$(curl -sS -w $'\n%{http_code}' "$url" "$@" 2>/dev/null) || rc=$?
+  if (( rc != 0 )); then HTTP_CODE=000; HTTP_BODY="curl exit ${rc}"; return 0; fi
   HTTP_CODE="${raw##*$'\n'}"
   HTTP_BODY="${raw%$'\n'*}"
 }
 
-# Wait for Keycloak to actually SERVE through the public Ingress before authenticating. On a
-# fresh cluster keycloak-0 takes minutes to boot (Quarkus augmentation on first start) and may
-# restart during convergence, so the route returns 503 / is unreachable for a while — the realm
-# import reporting `Done` only means the operator reached the INTERNAL service, not that the
-# public host is live. Poll instead of failing on the first 503 (the old behaviour, which forced
-# a manual re-run). Override the budget with KC_WAIT.
-wait_for_keycloak() {
-  local wait="${KC_WAIT:-300}" waited=0 code
-  echo ">> Waiting for Keycloak to serve ${KEYCLOAK_URL} (up to ${wait}s)..."
+# Acquire an admin token, retrying through Keycloak's first-boot readiness flaps. On a fresh
+# cluster keycloak-0 takes minutes to boot (Quarkus augmentation on first start) and may restart
+# during convergence, so the public route 503s / is unreachable for a while — and, critically,
+# it can serve a 200 on one request and 503 on the very next one while it flaps Ready↔NotReady.
+# A separate "poll well-known until 200, then authenticate once" gate therefore still races into
+# a 503 on the token call (the old behaviour, which forced a manual re-run). Instead we make the
+# TOKEN request ITSELF the readiness gate: retry transient failures (000 unreachable / 502 / 503
+# / 504) until the budget is spent, and fail fast only on definitive errors (401 wrong creds,
+# 404 misrouted Ingress). Override the budget with KC_WAIT (seconds).
+authenticate_admin() {
+  local wait="${KC_WAIT:-300}" waited=0 interval=10
+  echo ">> Authenticating as '${KEYCLOAK_ADMIN_USER}' against ${KEYCLOAK_URL}/realms/${ADMIN_REALM} (up to ${wait}s)"
   while :; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' \
-      "${KEYCLOAK_URL}/realms/${ADMIN_REALM}/.well-known/openid-configuration" 2>/dev/null || echo 000)
-    [[ "$code" == "200" ]] && { echo ">> Keycloak is serving (HTTP 200)."; return 0; }
-    (( waited >= wait )) && { echo "!! Keycloak still not ready (HTTP ${code}) after ${wait}s." >&2; return 1; }
-    printf '   not ready yet (HTTP %s); retrying… (%ss/%ss)\n' "$code" "$waited" "$wait"
-    sleep 10; waited=$((waited + 10))
+    http_post "${KEYCLOAK_URL}/realms/${ADMIN_REALM}/protocol/openid-connect/token" \
+      -d grant_type=password -d "client_id=${ADMIN_CLIENT}" \
+      --data-urlencode "username=${KEYCLOAK_ADMIN_USER}" \
+      --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}"
+    case "$HTTP_CODE" in
+      200)
+        TOKEN=$(jq -r '.access_token // empty' <<<"$HTTP_BODY")
+        [[ -n "$TOKEN" ]] && { echo ">> Authenticated."; return 0; }
+        die "no access_token in the response: $(printf '%.200s' "$HTTP_BODY")" ;;
+      401) die "admin login rejected. If you deleted temp-admin (Runbook 5a), export KEYCLOAK_ADMIN_USER and KEYCLOAK_ADMIN_PASSWORD for your permanent admin." ;;
+      404) die "HTTP 404 from ${KEYCLOAK_URL} — the Keycloak Ingress is not routing (TS-PLATFORM-04)." ;;
+      000|502|503|504)
+        (( waited >= wait )) && die "Keycloak still returning HTTP ${HTTP_CODE} after ${wait}s — check: kubectl -n ${NS_SYSTEM} get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
+        printf '   not ready yet (HTTP %s); retrying… (%ss/%ss)\n' "$HTTP_CODE" "$waited" "$wait"
+        sleep "$interval"; waited=$((waited + interval)) ;;
+      *) die "token request returned HTTP ${HTTP_CODE}: $(printf '%.200s' "$HTTP_BODY")" ;;
+    esac
   done
 }
-wait_for_keycloak || die "Keycloak never became reachable at ${KEYCLOAK_URL} — check: kubectl -n ${NS_SYSTEM} get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
-
-echo ">> Authenticating as '${KEYCLOAK_ADMIN_USER}' against ${KEYCLOAK_URL}/realms/${ADMIN_REALM}"
-http_post "${KEYCLOAK_URL}/realms/${ADMIN_REALM}/protocol/openid-connect/token" \
-  -d grant_type=password -d "client_id=${ADMIN_CLIENT}" \
-  --data-urlencode "username=${KEYCLOAK_ADMIN_USER}" \
-  --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}"
-
-case "$HTTP_CODE" in
-  200) ;;
-  401) die "admin login rejected. If you deleted temp-admin (Runbook 5a), export KEYCLOAK_ADMIN_USER and KEYCLOAK_ADMIN_PASSWORD for your permanent admin." ;;
-  404) die "HTTP 404 from ${KEYCLOAK_URL} — the Keycloak Ingress is not routing (TS-PLATFORM-04)." ;;
-  503) die "HTTP 503 from ${KEYCLOAK_URL} — Keycloak has no ready pod yet. Check: kubectl -n ${NS_SYSTEM} get pod keycloak-0" ;;
-  *)   die "token request returned HTTP ${HTTP_CODE}: $(printf '%.200s' "$HTTP_BODY")" ;;
-esac
-
-TOKEN=$(jq -r '.access_token // empty' <<<"$HTTP_BODY")
-[[ -n "$TOKEN" ]] || die "no access_token in the response: $(printf '%.200s' "$HTTP_BODY")"
+authenticate_admin
 
 # ── Set each user's password from the Secret ─────────────────────────────────
 set_password() {
