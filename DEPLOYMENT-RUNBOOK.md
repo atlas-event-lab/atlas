@@ -170,7 +170,7 @@ kubectl get database -n atlas-data
 # Multiplexes app transactions over few server conns so scaling out never trips max_connections:200.
 kubectl apply -f deploy/platform/cloudnative-pg/pooler.yaml
 kubectl -n atlas-data wait --for=condition=ready pod \
-  -l cnpg.io/poolerName=atlas-pg-pooler-rw --timeout=180s
+  -l cnpg.io/poolerName=atlas-pg-pooler-rw --timeout=300s
 ```
 
 > **Stuck here?** An `initdb` pod `Pending` on an unbound PVC is

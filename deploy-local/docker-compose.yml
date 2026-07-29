@@ -42,7 +42,7 @@ services:
       POSTGRES_DB: booking_db
     ports: ["5432:5432"]
     volumes:
-      - ./deploy-local/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+      - ./postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
       - atlas-pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U atlas -d booking_db"]
@@ -85,7 +85,7 @@ services:
       KC_HEALTH_ENABLED: "true"
     ports: ["8180:8080"]
     volumes:
-      - ./deploy-local/keycloak:/opt/keycloak/data/import:ro   # put realm-atlas.json here
+      - ./keycloak:/opt/keycloak/data/import:ro   # put realm-atlas.json here
 
   redis:
     image: redis:7.4-alpine
@@ -96,13 +96,13 @@ services:
     image: wiremock/wiremock:3.9.1
     command: ["--global-response-templating"]
     volumes:
-      - ./wiremock:/home/wiremock
+      - ./../wiremock:/home/wiremock
 
   gateway:
     image: nginx:1.27-alpine
     ports: ["8080:80"]              # single public entry point
     volumes:
-      - ./gateway/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./../gateway/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - booking-service
       - flight-service

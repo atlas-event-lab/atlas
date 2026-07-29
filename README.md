@@ -1,159 +1,75 @@
 <!--
-  Central README for Atlas (public "front door").
-  Suggested home: a dedicated public atlas repo (e.g. atlas-event-lab/atlas) or the org
-  .github profile repo. Self-contained; does not reference the private SDD /docs folder.
-  Before publishing: set the real repo URLs and, ideally, add screenshots/GIFs where marked.
+  Hub-repo README (atlas-event-lab/atlas). This is the repo-level front door: what lives HERE
+  (architecture, the deploy automation, the experiments) and how to use it. The project vision,
+  the "why", and the org-wide overview live in the organization profile:
+    https://github.com/atlas-event-lab  (rendered from atlas-event-lab/.github → profile/README.md)
+  Community-health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY) live in that same
+  `.github` repo and GitHub applies them to this repo automatically.
 -->
 
 <div align="center">
 
-# 🌍 Atlas
+# 🌍 Atlas — hub
 
-**Learn distributed systems by running one — not just by reading about them.**
+**The central repo: the architecture, the one-command deployment, and the experiments.**
 
-A production-inspired, event-driven travel-booking platform you can stand up, break on
-purpose, and watch heal. Built to make **Kafka, Event-Driven Architecture, the Saga pattern,
-CQRS and Kubernetes** tangible — with every hard guarantee *demonstrated by a reproducible
-experiment*, not asserted in prose.
+Stand up the **entire** event-driven platform on your own Kubernetes cluster — the 8 services,
+Kafka, Postgres, Keycloak, autoscalers, and full observability — then run the experiments that
+turn its guarantees into evidence.
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-active%20learning%20lab-brightgreen.svg)](#)
-[![Architecture](https://img.shields.io/badge/docs-diagrams%20%26%20ADRs-informational.svg)](./diagrams)
 [![Deploy](https://img.shields.io/badge/deploy-any%20Kubernetes-326ce5.svg)](./DEPLOYMENT-RUNBOOK.md)
+[![Architecture](https://img.shields.io/badge/docs-diagrams%20%26%20ADRs-informational.svg)](./diagrams)
+[![Status](https://img.shields.io/badge/status-active%20learning%20lab-brightgreen.svg)](#)
+
+**New here?** Start with the project overview and vision on the
+**[organization profile](https://github.com/atlas-event-lab)**, then come back to run it.
 
 </div>
 
-<!-- Suggestion: add a short GIF here of a booking flowing through the saga (Grafana trace),
-     or a screenshot of the RED dashboard. Nothing sells a distributed-systems lab like seeing
-     it heal in real time. -->
+---
+
+## What's in this repo
+
+This is the **hub** — everything you need to understand, deploy, and experiment on Atlas:
+
+- **The architecture** — diagrams and the decision records behind them.
+- **The deployment automation** — GitOps + scripts that bring the whole stack up on a fresh
+  cluster, plus a manual runbook and a local Docker-Compose option.
+- **The experiments** — the resilience/scalability probes, with their scripts and results.
+
+The **service code** lives in its own per-service repositories under the
+[organization](https://github.com/atlas-event-lab); this repo wires them together and deploys them.
 
 ---
 
-## Why Atlas?
+## Understand the architecture
 
-Most distributed-systems learning stops at the whiteboard. Atlas is the opposite: a **real,
-running system** where the genuinely hard parts — effectively-once processing over
-at-least-once delivery, saga compensation, the no-oversell invariant, crash recovery,
-read-model rebuilds — are **shown working under load and failure**, with the scripts and
-results in the repo so you can reproduce (and question) them yourself.
+Start with the diagrams in **[`diagrams/`](./diagrams)** — system context, the booking saga
+(happy path _and_ compensation), the service state machines, the payment flow, the CQRS search
+projections, and the Kafka event/topic map:
 
-If you are learning event-driven architecture, Kafka, or microservices — or you want a
-portfolio-grade reference architecture you can actually deploy — this is a lab you can clone
-and run today.
+| Diagram | What it shows |
+|---------|---------------|
+| [`diagrams/README.md`](./diagrams/README.md) | Index + system context |
+| [`diagrams/booking-saga.md`](./diagrams/booking-saga.md) | The saga: confirm, fail, time out, compensate |
+| [`diagrams/inventory.md`](./diagrams/inventory.md) | Reservation locks & the no-oversell invariant |
+| [`diagrams/payment.md`](./diagrams/payment.md) | Crash-safe, idempotent charging |
+| [`diagrams/search-cqrs.md`](./diagrams/search-cqrs.md) | CQRS read models built from events |
+| [`diagrams/events-and-topics.md`](./diagrams/events-and-topics.md) | The Kafka event & topic map |
 
-**Who it's for**
-
-- Backend engineers leveling up on event-driven and distributed patterns.
-- People preparing for system-design interviews who want a concrete, end-to-end example.
-- Anyone who wants to *see* a saga confirm, fail, time out and compensate — with distributed
-  traces in Grafana — instead of trusting that it would.
-
-> Atlas is **not** a commercial product. It is an open learning laboratory: reproducible, and
-> meant to be read, run, broken, and improved.
-
----
-
-## What you can do with it
-
-- **Run the whole platform locally in minutes** with Docker Compose, make a booking, and
-  follow it end-to-end through a **choreographed saga** across Inventory and Payment.
-- **Break it on purpose.** Kill a consumer mid-saga, stall the payment provider, replay
-  duplicate messages, poison a queue — and watch the system stay correct: no double charges,
-  no oversell, no lost or stranded bookings.
-- **Push it under load** with k6 and watch it scale out via HPA / KEDA instead of falling over.
-- **Stand up a real cluster on your own cloud** — vendor-agnostic by design, made to ride
-  free-trial credits (Oracle OKE, Civo, GKE, EKS) and move between them.
-- **Observe everything**: distributed traces threaded across the whole saga, RED metrics,
-  Kafka consumer lag — all in Grafana.
-
----
-
-## The experiments — the heart of the lab
-
-Each experiment is a self-contained probe with a **hypothesis, a runnable k6/fault-injection
-script, and a written result**. This is where the claims get earned. Full details and raw
-runs live in **[`experiments/`](./experiments)**.
-
-| # | Experiment | Proves | Result so far |
-|---|------------|--------|---------------|
-| 01 | High booking concurrency | HPA scales the hot path; the pool keeps DB connections bounded | Scaled to **~28.8k bookings at 100% success** after tuning; latency degrades gracefully, no error cliff |
-| 02 | Inventory contention | Many concurrent bookings for one scarce seat never oversell | **No oversell** — 400 racers on capacity 314 settle to exactly 314/314, 0 stuck |
-| 03 | Duplicate messages / idempotency | At-least-once delivery + idempotent consumers = effectively-once | 106 redelivered events, **all skipped as duplicates**, zero state change |
-| 04 | Consumer crash mid-saga | A killed consumer resumes with no loss and no double-processing | 1000 bookings, 2 payment pods killed mid-flight → **0 double charges**, 0 left in-flight |
-| 05 | Payment timeout → compensation | A stalled payment times out and the saga compensates, returning stock | 20 stalls → 20 expiries, inventory **and** read models return to baseline |
-| 06 | Dead-letter-queue recovery | A poison message parks; a recoverable one replays cleanly | Replay path implemented; scripted run pending |
-| 07 | Read-model rebuild | The CQRS read side is fully derivable by replaying events | Rebuild works within retention; the run **surfaced the beyond-retention gap** and drove a resync design |
-
-The interesting part isn't just the green checks — it's the **findings**. Experiment 07, for
-instance, failed in a useful way (data aged out of Kafka retention), exposed a real gap, and
-produced the fix. That's the kind of thing this lab is for.
-
----
-
-## Stand it up on your own cloud (trial-friendly)
-
-Atlas is built to be **platform-agnostic**. Everything stateful — PostgreSQL, Kafka, Keycloak
-— runs **inside the cluster** via operators (CloudNativePG, Strimzi, the Keycloak operator),
-so the only vendor-specific surfaces are the node pool and the LoadBalancer. That means you
-can:
-
-- Bring it up on **any conformant Kubernetes** using free-trial credits, then **tear it down
-  and rebuild it on the next vendor's trial** with minimal change.
-- Practice the full operational loop: operators, GitOps-style Helm deploys, sealed secrets,
-  autoscaling, cost controls (idle-down scripts), and observability wiring.
-
-The complete, ordered, vendor-agnostic guide — with a per-vendor porting table
-(OKE / Civo / GKE / EKS / local `kind`) — is in **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)**.
-
----
-
-## Architecture at a glance
-
-```mermaid
-flowchart TB
-    user([User / Client])
-    subgraph edge[Edge]
-        gw[API Gateway]
-        kc[(Keycloak · OIDC / JWT)]
-    end
-    subgraph apps[Services · database-per-service]
-        usr[User]
-        fl[Flight]
-        ht[Hotel]
-        inv[Inventory]
-        cart[Travel Cart]
-        bk[Booking]
-        pay[Payment]
-        srch[Search · CQRS]
-    end
-    kafka{{Apache Kafka · domain events}}
-    psp[[Fake Payment Provider]]
-
-    user --> gw
-    gw --> usr & fl & ht & cart & bk & srch
-    bk -.->|each service validates JWT| kc
-    bk <-->|saga choreography| kafka
-    inv <--> kafka
-    pay <--> kafka
-    srch <-->|read models| kafka
-    pay --> psp
-```
-
-Full diagrams — system context, the booking saga (happy path and compensation), state
-machines, payment flow, CQRS projections, and the Kafka event map — are in
-**[`diagrams/`](./diagrams)**. The reasoning behind the design lives as
+The **reasoning** behind each design decision is captured as
 **[Architecture Decision Records](./docs/adr)** in `docs/adr/`.
 
 **Non-negotiable principles:** database per service (no cross-service joins or foreign keys) ·
-no distributed transactions / 2PC — consistency via the **Saga pattern** · events preferred
-over synchronous REST · every endpoint born from a contract · identity via Keycloak JWTs
-validated by each service.
+no distributed transactions / 2PC — consistency via the **Saga pattern** · events preferred over
+synchronous REST · every endpoint born from a contract · identity via Keycloak JWTs validated by
+each service.
 
 ---
 
-## Services (multi-repo)
+## Services
 
-Each service is an independent repository with its own CI pipeline.
+Each service is an independent repository with its own CI pipeline; this repo deploys them.
 
 | Service | Responsibility | Status |
 |---------|----------------|--------|
@@ -168,31 +84,42 @@ Each service is an independent repository with its own CI pipeline.
 | Search | Flight & hotel search read models (CQRS) | Implemented |
 | Notification | Email notifications | Planned |
 
-> Repository URLs live under the `atlas-event-lab` organization. Update the **Status** column
-> each release.
-
 ---
 
 ## Start here — the path
 
-The whole point of Atlas is to **run the experiments on a real cluster** and *see* the
-evidence in Grafana — that only happens on Kubernetes, not locally. Suggested path:
+The whole point of Atlas is to **deploy your own cluster and run the experiments on it**, then
+_see_ the evidence in Grafana — that only happens on Kubernetes, not locally.
+
+And you can stand up the **entire architecture** yourself: the 8 services, **Kafka** and its
+autoscalers, the **Postgres** databases, the **observability** stack (Prometheus / Loki / Tempo /
+Grafana), and **Keycloak** for auth — all wired together and **automated in scripts**, so you
+spin it up quickly and spend your time on the experiments instead of on plumbing. That is the
+fast path to building real intuition for **Kafka, Event-Driven Architecture, distributed systems,
+observability, and microservices**.
 
 1. **Skim the [diagrams](./diagrams)** — context, the saga, the state machines. ~10 min.
-2. **Provision a cluster and deploy the stack**, in order →
-   **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)** (Oracle OKE or Civo on trial
-   credits). This is the main path.
+2. **Bring up the whole stack on a cluster.** Two ways, same manifests:
+   - **GitOps (recommended)** — `terraform apply` for a trial-credit cluster, then **one**
+     `bootstrap.sh`, and Argo CD converges the entire stack wave by wave:
+     **[`deploy/argocd/README.md`](./deploy/argocd/README.md)**.
+   - **Manual runbook** — the ~30 ordered `kubectl`/`helm` commands, to understand what each
+     piece does: **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)** (Oracle OKE or Civo on
+     trial credits, with a per-vendor porting table).
 3. **Make your first booking and open the dashboards** — Grafana (RED metrics, Kafka, traces
-   threaded across the saga) and the Kafka UI. The runbook's **"See it work"** section walks
-   you through it.
+   threaded across the saga) and the Kafka UI. Each guide's **"See it work"** section walks you
+   through it.
 4. **Run the experiments** → **[`experiments/`](./experiments)**: load-test it (Exp 01), replay
    duplicates (Exp 03), kill a consumer mid-saga (Exp 04) — and watch it scale, heal, and never
    oversell or double-charge, **live in Grafana**.
-5. **Read the [ADRs](./docs/adr)** to see *why* each decision was made.
+5. **Read the [ADRs](./docs/adr)** to see _why_ each decision was made.
 
 > **Just want to poke the API by hand, without a cluster?** There's a local Docker-Compose
 > walkthrough in [`deploy-local/LOCAL-DEPLOYMENT.md`](./deploy-local/LOCAL-DEPLOYMENT.md).
 > It's for manual API play only — the experiments need Kubernetes.
+
+Stuck on a deploy? Known issues and fixes live in
+**[`deploy/TROUBLESHOOTING.md`](./deploy/TROUBLESHOOTING.md)**.
 
 ---
 
@@ -201,39 +128,29 @@ evidence in Grafana — that only happens on Kubernetes, not locally. Suggested 
 Atlas is developed with **Specification-Driven Development (SDD)**: behavior is designed as
 specifications and contracts first, and the code implements them. REST endpoints are
 **contract-first**; events are described in **AsyncAPI**; cross-cutting and cross-service
-decisions are captured as **ADRs** (27 and counting). Consistency is enforced mechanically
-(formatting via Spotless, style via Checkstyle, tests as a CI gate).
+decisions are captured as **ADRs**. Consistency is enforced mechanically (formatting via Spotless,
+style via Checkstyle, tests as a CI gate).
 
 ---
 
 ## Tech stack
 
 Java 21 · Spring Boot · Spring Data JPA · PostgreSQL · Apache Kafka · Redis · Keycloak ·
-nginx / ingress-nginx · Docker · Kubernetes · Helm · Strimzi · CloudNativePG · KEDA ·
-Prometheus · Loki · Tempo · Grafana · GitHub Actions · k6
+nginx / ingress-nginx · Docker · Kubernetes · Helm · Argo CD · Strimzi · CloudNativePG · KEDA ·
+Prometheus · Loki · Tempo · Grafana · GitHub Actions · k6 · Terraform
 
 ---
 
-## Roadmap
+## Future Changes
 
-- **Notification service** (email/notification history) — specified, not yet built.
-- **Phase 2 — Saga orchestration**: migrate the same saga from choreography to orchestration
-  to compare the two approaches head-to-head.
-- **Experiment 06** (DLQ recovery) scripted run, and more fault-injection scenarios.
-- Deploy on a second cloud to validate the portability thesis end-to-end.
-
-**Releases:** see the [`CHANGELOG.md`](./CHANGELOG.md). `v1.0.0` is intentionally gated on one
-acceptance test — standing up the platform on a **fresh cluster by following the deployment
-runbook alone** — so the "runs on any Kubernetes" claim is proven, not just written.
-
+- **Notification service** (email / notification history) — specified, not yet built.
+- **Phase 2 — Saga orchestration**: migrate the same saga from choreography to orchestration to
+  compare the two approaches head-to-head.
+- **CDC for the outbox pattern** — replace the polling outbox relay with **log-based Change Data
+  Capture via Debezium**, streaming committed changes straight from the Postgres WAL to Kafka.
+- **Avro + Schema Registry** — move Kafka messaging to **Avro** serialization backed by a
+  **Schema Registry**, for enforced, versioned event schemas and compatibility checks.
 ---
 
-## Contributing
-
-Questions, corrections, and experiment proposals are all welcome — this is a place to learn.
-See **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** and **[`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)**.
-Security reports: **[`SECURITY.md`](./SECURITY.md)**.
-
-## License
-
-Distributed under the **Apache License 2.0**. See [`LICENSE`](./LICENSE).
+_Part of the **Atlas Event Lab** — see the [organization profile](https://github.com/atlas-event-lab)
+for the vision, the full overview, contributing guide, and license (Apache-2.0)._

@@ -65,9 +65,6 @@ loudly if it yields no in-stock results.
 - The shared setup in the [repo README](../README.md): `k6` installed, `.env` filled in
   (gateway, Keycloak, load-test client), the **user pool seeded**
   (`scripts/seed-loadtest-users.sh`). If you provisioned the cluster using the bootstrap script, the user pool is already seeded.
-- **Scaling is already wired by the deploy** — the HPAs (inventory/search/booking) and the
-  PgBouncer pooler (`atlas-pg-pooler-rw`, which keeps DB connections under `max_connections: 200`
-  as the services scale out) are applied by GitOps/the runbook, so there is nothing extra to run.
 - Grafana open — this experiment is only meaningful if you watch it scale.
 
 ## Smoke test first (recommended)
@@ -124,30 +121,6 @@ Knobs (env): `SCENARIO` (flight|hotel|both), `TARGET_RPS` (peak journeys/sec, de
 The routes/cities come from the `ROUTES`
 table in `lib/k6/config.js`. Start modest and climb across runs — find the knee, don't
 guess it.
-
-> ### ⚠️ The knee on the Civo cluster is ~35 journeys/s. Pick `TARGET_RPS` accordingly.
->
-> Measured 2026-07-26, `SCENARIO=both`, on 3 × `g4p.kube.small` (4 vCPU / 16 GB = **12 vCPU /
-> 48 GB**). At a sustained 35 journeys/s the nodes were at **93% CPU** (idle 0.19 / 0.31 / 0.32
-> cores of 4 each; steal ~0.05%, so this is genuine work, not a noisy neighbour). That works out
-> to **~320 milli-cores of CPU per journey**, cluster-wide:
->
-> | target | CPU needed | vs this cluster |
-> |---|---|---|
-> | 35 journeys/s | 11.2 cores | 0.93× — **the knee** |
-> | 45 journeys/s | 14.4 cores | 1.20× |
-> | 60 journeys/s | 19.2 cores | **1.60×** |
->
-> **`TARGET_RPS=60` is unreachable here**, and it fails in a way that is easy to misread: the
-> arrival-rate executor cannot find a free VU, so it reports `dropped_iterations` in the tens of
-> thousands and every latency percentile inflates. That looks like the system degrading when it
-> is really the load generator queueing. Watch `dropped_iterations` — a large value means the run
-> never reached its target and its numbers describe a VU-starved test, not the system.
->
-> **This ceiling is a property of the cluster, not of Atlas.** The same 60 journeys/s ran fine on
-> the earlier Oracle cluster at nominally identical size — 3 × `VM.Standard.E5.Flex` @ 2 OCPU /
-> 16 GB, and on x86 shapes **1 OCPU = 1 physical core = 2 vCPU**, so also 12 vCPU / 48 GB. If
-> both are 12 vCPU and one serves 1.6× the throughput, the difference is per-core performance.
 
 ## What to watch (Grafana)
 

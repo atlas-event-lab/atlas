@@ -1,6 +1,6 @@
 # Atlas — System Diagrams
 
-Up-to-date, human-oriented visual documentation of how Atlas works. These diagrams are
+Visual documentation of how Atlas works. These diagrams are
 **informative** — the authoritative behavior lives in each service and its contracts. They
 are rendered directly by GitHub (Mermaid).
 
