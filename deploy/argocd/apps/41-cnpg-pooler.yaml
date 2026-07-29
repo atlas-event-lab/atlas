@@ -1,0 +1,31 @@
+# Wave 4 — PgBouncer Pooler (atlas-pg-pooler-rw) in front of the primary. Relieves the
+# cluster's max_connections: 200 once the stateless services scale under HPA/KEDA: PgBouncer
+# multiplexes many short app transactions over a small, bounded set of real server connections.
+# The 8 services connect through it (their DB_URL points at atlas-pg-pooler-rw, transaction mode
+# + prepareThreshold=0). Gated behind the wave-3 Cluster being Ready, alongside the databases.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-pooler
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/cloudnative-pg
+    directory:
+      recurse: false
+      include: 'pooler.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

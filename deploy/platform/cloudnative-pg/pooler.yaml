@@ -1,4 +1,7 @@
-# PgBouncer connection pooler for Atlas (Phase 7 prep — relieve max_connections: 200).
+# PgBouncer connection pooler for Atlas — relieves the cluster's max_connections: 200.
+# Applied by GitOps (deploy/argocd/apps/41-cnpg-pooler.yaml, wave 4) and by the runbook, right
+# after the databases; the 8 services already connect through it (their DB_URL points at
+# atlas-pg-pooler-rw with ?prepareThreshold=0), so scaling works out of the box.
 #
 # WHY: under load/HPA the stateless services scale to 3–4 pods each; every pod's Hikari
 # pool opens direct connections to Postgres. Without pooling, aggregate client connections
@@ -18,8 +21,8 @@
 # POOL MODE = transaction: the multiplexing mode. A server connection is returned to the
 #   pool at the end of each transaction, so few server conns serve many clients.
 #   CAVEAT: server-side prepared statements and session state don't survive across
-#   transactions. Apps MUST disable server-side prepared statements — append
-#   `?prepareThreshold=0` to the JDBC DB_URL when cutting a service over (see runbook).
+#   transactions, so every service's JDBC DB_URL carries `?prepareThreshold=0` (already set in
+#   deploy/helm/atlas-service/values/*.yaml). Keycloak stays on the DIRECT rw service.
 #
 # APPLY:  kubectl apply -f deploy/platform/cloudnative-pg/pooler.yaml
 # The Pooler name MUST differ from the Cluster name (atlas-pg) — hence `-pooler-rw`.

@@ -6,7 +6,7 @@ image:
   tag: ""
 
 config:
-  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/user_db
+  DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/user_db?prepareThreshold=0
 
 envSecret:
   enabled: true

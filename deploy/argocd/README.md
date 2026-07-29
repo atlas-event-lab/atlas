@@ -1,19 +1,6 @@
 # GitOps for Atlas (Argo CD)
 
-Two ways to deploy Atlas:
-
-- **(A) GitOps (RECOMMENDED) — this folder.** `terraform apply` + **one** `bootstrap.sh`, then watch the whole
-  stack converge **wave by wave** in the Argo CD UI. Self-heals, surfaces errors visually.
-- **(B) The manual runbook** — [`DEPLOYMENT-RUNBOOK.md`](../../DEPLOYMENT-RUNBOOK.md) — the ~30
-  `kubectl`/`helm` commands, kept intact as the "understand what each piece does" path.
-
-Both deploy the **same manifests** under [`deploy/platform/`](../platform) and the same Helm chart
-under [`deploy/helm/atlas-service/`](../helm/atlas-service). GitOps just drives them declaratively.
-
-> **Repo naming.** The GitHub remote is `github.com/atlas-event-lab/atlas`. Every `repoURL` in this folder is
-> `https://github.com/atlas-event-lab/atlas.git` with `path: deploy/...`. **If you fork or rename the
-> repo, update `repoURL` in `root-app.yaml`, `projects/atlas-project.yaml`, and every `apps/*.yaml`**
-> (a one-line `sed` over the folder).
+Deploy Atlas with `terraform apply` + **one** `bootstrap.sh`, then watch the whole stack converge **wave by wave** in the Argo CD UI. Self-heals, surfaces errors visually, it deploys the manifests under [`deploy/platform/`](../platform) and the Helm chart under [`deploy/helm/atlas-service/`](../helm/atlas-service). GitOps just drives them declaratively.
 
 ---
 
@@ -58,14 +45,8 @@ pool, so the cluster comes up ready for `experiments/`.
 ```bash
 ./deploy/argocd/bootstrap.sh \
   --loadtest-users 50 \                 # smaller k6 pool (0 = skip seeding)
-  --realm ./my-exported-realm.yaml \    # OVERRIDE the repo's realm with your own
   --kafka-ui-user me --kafka-ui-pass s3cret
 ```
-
-> `--realm` is no longer required. The repo ships a complete realm — the `ADMIN` role, the
-> `atlas-web` and `atlas-loadtest` clients, and the two users — which Argo applies in wave 5.
-> Use the flag only to bring your own, and only on a fresh cluster: the Keycloak operator
-> **creates** realms but never updates them (see the caveat in `apps/50-keycloak.yaml`).
 
 ---
 
@@ -95,7 +76,7 @@ Keycloak are ready above them — that is the ordering working, not a failure.
 
 ### Grafana — metrics, logs, traces
 
-No ingress by default, so port-forward it:
+Run the following command to open a connection to the Kubernetes cluster and forward the Grafana service to your local machine on port `3000`. Keep this terminal window running while you use Grafana.
 
 ```bash
 kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80
@@ -117,11 +98,24 @@ are *still* empty afterwards, check `kubectl -n atlas-data get podmonitor`.
 
 ### Kafka UI — the events themselves
 
-Bootstrap patched its ingress and generated a basic-auth password:
+Kafka UI is exposed through the NGINX Ingress with HTTP Basic Authentication.
 
+Open:
+
+```text
+http://kafka.$LB.nip.io
 ```
-http://kafka.$LB.nip.io         admin / (printed on the card)
+
+- **Username:** `admin`
+- **Password:** Printed during the bootstrap process.
+
+> **Note:** If you don't know the load balancer IP, retrieve it with:
+
+```bash
+kubectl -n atlas-system get svc ingress-nginx-controller
 ```
+
+Then replace `$LB` with the value of the **EXTERNAL-IP** field.
 
 Open **Topics** and leave it there. Also worth a tab: **Consumer Groups**, where
 `inventory-service` and `search-service` will show lag spike and drain.
@@ -315,7 +309,7 @@ The load-test user pool was already seeded by `bootstrap.sh` (`--loadtest-users`
 |------|-----------|
 | `bootstrap.sh` | The one imperative script (secrets, WireMock CM, installs Argo CD, applies the root app, patches the LB host). Idempotent. |
 | `root-app.yaml` | The **app-of-apps** root — a `directory` Application over `apps/` (recurse). Creates every child. |
-| `apps/*.yaml` | The 24 child Applications / the services `ApplicationSet`, each with a `sync-wave`. |
+| `apps/*.yaml` | The 25 child Applications / the services `ApplicationSet`, each with a `sync-wave`. |
 | `projects/atlas-project.yaml` | The `atlas` AppProject — whitelists source repos, destinations, cluster kinds. |
 | `install/argocd-values.yaml` | Helm values for Argo CD itself (ingress host, `server.insecure`, RBAC). |
 | `install/argocd-cm-health.yaml` | Custom health for the CNPG `Cluster` / Strimzi `Kafka` / `Keycloak` CRs. |
@@ -336,7 +330,7 @@ real Postgres/Kafka/Keycloak readiness (not just "the object exists").
 | **1** | `ingress-nginx`, `metrics-server` | ingress-nginx **provisions the LoadBalancer** (its IP drives Phase B); metrics-server backs the HPAs. |
 | **2** | `cnpg-operator`, `strimzi-operator`, `keycloak-operator`, `kube-prometheus-stack`, `keda-operator` | Operators + their **CRDs** (CRD-before-CR). |
 | **3** | `cnpg-cluster`, `kafka-cluster`, `redis`, `obs-loki`, `obs-tempo`, `obs-alloy` | The stateful CRs — gated on the operators, and held Progressing by custom health until Ready. |
-| **4** | `cnpg-databases`, `kafka-topics`, `obs-config` | Depend on a **Ready** Postgres/Kafka; Grafana datasources + dashboards. |
+| **4** | `cnpg-databases`, `cnpg-pooler`, `kafka-topics`, `obs-config` | Depend on a **Ready** Postgres/Kafka; the PgBouncer pooler the services connect through; Grafana datasources + dashboards. |
 | **5** | `keycloak` | Needs `keycloak_db` + `keycloak-db-secret` (wave 4). |
 | **6** | `wiremock` | Fake payment provider; payment depends on it. |
 | **7** | `atlas-services` (**ApplicationSet**) | The 8 services — one Application per `values/<svc>.yaml`. |

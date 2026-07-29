@@ -5,9 +5,7 @@
 
 This is the baseline experiment. It builds the k6 harness every other experiment reuses,
 and it produces the reference numbers — throughput, latency, where the system starts to
-bend — that the resilience experiments are measured *against*. It also directly exercises
-the Phase 7 prep: the HPA on `booking`/`inventory` and the PgBouncer pooler in front of
-Postgres.
+bend — that the resilience experiments are measured *against*.
 
 ## Hypothesis
 
@@ -66,9 +64,10 @@ loudly if it yields no in-stock results.
 
 - The shared setup in the [repo README](../README.md): `k6` installed, `.env` filled in
   (gateway, Keycloak, load-test client), the **user pool seeded**
-  (`scripts/seed-loadtest-users.sh`), the `ROUTES` table filled in (`lib/k6/config.js`), and
-  **seeded inventory** on those routes/cities for the dates used.
-- HPAs restored and the pooler applied (`deploy/scripts/phase7-prep.sh`).
+  (`scripts/seed-loadtest-users.sh`). If you provisioned the cluster using the bootstrap script, the user pool is already seeded.
+- **Scaling is already wired by the deploy** — the HPAs (inventory/search/booking) and the
+  PgBouncer pooler (`atlas-pg-pooler-rw`, which keeps DB connections under `max_connections: 200`
+  as the services scale out) are applied by GitOps/the runbook, so there is nothing extra to run.
 - Grafana open — this experiment is only meaningful if you watch it scale.
 
 ## Smoke test first (recommended)
