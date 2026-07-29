@@ -119,8 +119,12 @@ sweep_orphaned_volumes() {
   [ -z "$region" ] && region="$(civo region current 2>/dev/null || true)"
   net="${CLUSTER_NAME}-net"
   log "Sweeping orphaned volumes on network '${net}' (region '${region:-?}')..."
-  civo volume ls --region "$region" -o custom -f ID,Network 2>/dev/null \
-    | awk -v n="$net" '$2==n{print $1}' \
+  # `civo volume ls -o custom` fields are LOWERCASE (id,name,network_id,...); uppercase names are
+  # echoed literally. The output is COMMA-separated (hence `awk -F,`), and each volume's
+  # `network_id` column actually carries the network's NAME (e.g. atlas-civo-net), not a UUID — so
+  # match it against `${CLUSTER_NAME}-net`.
+  civo volume ls --region "$region" -o custom -f id,network_id 2>/dev/null \
+    | awk -F, -v n="$net" '$2==n{print $1}' \
     | while read -r id; do
         [ -n "$id" ] && { log "  deleting volume $id"; civo volume delete "$id" --region "$region" -y >/dev/null 2>&1 || true; }
       done
@@ -134,7 +138,8 @@ cmd_down() {
     log "Terraform destroy failed. If it was DatabaseNetworkInUseByVolumes, orphaned CSI volumes"
     log "are blocking the network — sweeping them and retrying once (see TROUBLESHOOTING TS-CIVO-03)."
     sweep_orphaned_volumes
-    terraform -chdir="$TF_DIR" destroy
+    # You already confirmed the destroy above; auto-approve the retry so the sweep+retry is seamless.
+    terraform -chdir="$TF_DIR" destroy -auto-approve
   fi
 }
 

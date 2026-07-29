@@ -100,12 +100,23 @@ observability, and microservices**.
 
 1. **Skim the [diagrams](./diagrams)** — context, the saga, the state machines. ~10 min.
 2. **Bring up the whole stack on a cluster.** Two ways, same manifests:
-   - **GitOps (recommended)** — `terraform apply` for a trial-credit cluster, then **one**
-     `bootstrap.sh`, and Argo CD converges the entire stack wave by wave:
-     **[`deploy/argocd/README.md`](./deploy/argocd/README.md)**.
    - **Manual runbook** — the ~30 ordered `kubectl`/`helm` commands, to understand what each
      piece does: **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)** (Oracle OKE or Civo on
      trial credits, with a per-vendor porting table).
+   - **GitOps (recommended)** — `terraform apply` for a trial-credit cluster, then **one**
+     `bootstrap.sh`, and Argo CD converges the entire stack wave by wave:
+     **[`deploy/argocd/README.md`](./deploy/argocd/README.md)**.
+   
+
+   > **What it costs — and the free credits.** The stack runs on a **12 vCPU / 48 GB** cluster.
+   > It's built for the free-trial credits of **Oracle Cloud (OKE)** and **Civo** — less
+   > mainstream than AWS/GCP, but their trials hand you **enough** resources for the whole stack,
+   > and both are where these experiments were actually run. Rough compute at 24/7:
+   > **Civo ≈ $0.36/h (~$261/mo)** — the ~$250 trial buys **~700 cluster-hours**, plenty for
+   > part-time use; **Oracle ≈ $0.22/h (~$155/mo)**, and only **~$17/mo** if you run it ~4 h/day.
+   > The real cost lever is **destroying the cluster when idle** (step 6). Full model:
+   > [`deploy/ops/README.md`](./deploy/ops/README.md) and
+   > [`deploy/cluster/civo/terraform/README.md`](./deploy/cluster/civo/terraform/README.md).
 3. **Make your first booking and open the dashboards** — Grafana (RED metrics, Kafka, traces
    threaded across the saga) and the Kafka UI. Each guide's **"See it work"** section walks you
    through it.
@@ -113,6 +124,17 @@ observability, and microservices**.
    duplicates (Exp 03), kill a consumer mid-saga (Exp 04) — and watch it scale, heal, and never
    oversell or double-charge, **live in Grafana**.
 5. **Read the [ADRs](./docs/adr)** to see _why_ each decision was made.
+6. **Tear it down when you're done — so an idle cluster doesn't keep billing you.** A cloud
+   charges for worker nodes while they are **running**, regardless of load, so destroy the
+   cluster (or scale it to zero) the moment you finish experimenting:
+   - **Civo:** `./deploy/ops/civo/cluster.sh down` or `terraform destroy` — the cluster is
+     gone and billing drops to **$0**. It cleans up the orphaned block volumes for you (the raw
+     `terraform destroy` gotcha is [TS-CIVO-03](./deploy/TROUBLESHOOTING.md#ts-civo-03--civo-terraform-destroy-fails-databasenetworkinusebyvolumes)).
+   - **Oracle OKE:** `./deploy/ops/oracle/cluster-down.sh` — scales the node pool to **0** so the
+     workers terminate; PVC data persists for the next `up`.
+
+   The two on/off levers, what still bills while down, and the full cost model are in
+   **[`deploy/ops/README.md`](./deploy/ops/README.md)**.
 
 > **Just want to poke the API by hand, without a cluster?** There's a local Docker-Compose
 > walkthrough in [`deploy-local/LOCAL-DEPLOYMENT.md`](./deploy-local/LOCAL-DEPLOYMENT.md).

@@ -184,8 +184,13 @@ already gone, so the volumes can only be cleaned through the Civo API.
 civo volume ls --region nyc1
 
 # Delete each pvc-* volume shown (they read `available` = detached, safe to delete).
-civo volume delete <volume-id> --region nyc1 -y      # repeat per id, or:
-civo volume ls --region nyc1 -o custom -f ID | while read -r id; do civo volume delete "$id" --region nyc1 -y; done
+civo volume delete <volume-id> --region nyc1 -y      # repeat per id, or, to sweep the whole net:
+# NOTE: `-o custom` fields are LOWERCASE and comma-separated; each volume's `network_id` column
+# carries the network NAME (e.g. atlas-civo-net). Filter on it so you only touch this cluster's
+# volumes — never a bare `-f id` (that would delete every volume in the region).
+civo volume ls --region nyc1 -o custom -f id,network_id \
+  | awk -F, -v n=atlas-civo-net '$2==n{print $1}' \
+  | while read -r id; do civo volume delete "$id" --region nyc1 -y; done
 
 # Re-run destroy — only the network is left, and it deletes in ~10s.
 cd deploy/cluster/civo/terraform && terraform destroy
