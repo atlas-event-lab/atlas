@@ -260,10 +260,16 @@ fi
 # ones generated in Phase A. Idempotent — re-running just resets them to the Secret's values.
 if [[ "$REALM_READY" == true ]]; then
   log "Setting realm user passwords"
-  if LB="$LB" bash "$REPO_ROOT/deploy/platform/keycloak/set-realm-passwords.sh"; then
+  # Pass KEYCLOAK_URL EXPLICITLY (derived from the fresh LB), not just LB: set-realm-passwords.sh
+  # honours a pre-set KEYCLOAK_URL, so a stale one inherited from the shell — e.g. after
+  # `set -a; source experiments/.env; set +a`, whose KEYCLOAK_URL points at a PREVIOUS cluster —
+  # would otherwise send it at the wrong host. Overriding it here makes bootstrap immune.
+  if KEYCLOAK_URL="http://keycloak.$LB.nip.io" LB="$LB" \
+     bash "$REPO_ROOT/deploy/platform/keycloak/set-realm-passwords.sh"; then
     ok "atlas-user and atlas-admin can now log in"
   else
-    warn "set-realm-passwords.sh failed — re-run it manually: LB=$LB ./deploy/platform/keycloak/set-realm-passwords.sh"
+    warn "set-realm-passwords.sh failed — re-run it manually (override any stale KEYCLOAK_URL):"
+    warn "  KEYCLOAK_URL=http://keycloak.$LB.nip.io LB=$LB ./deploy/platform/keycloak/set-realm-passwords.sh"
     # Do NOT flip REALM_READY here: the load-test seeding below is INDEPENDENT of this step
     # (it creates its own loadtest-N users with the loadtest-password). Gating it on this step's
     # success is what silently skipped the whole pool when this hit a transient Keycloak 503.
