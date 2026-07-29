@@ -165,12 +165,6 @@ kubectl apply -f deploy/platform/cloudnative-pg/cluster.yaml
 kubectl wait --for=condition=Ready cluster/atlas-pg -n atlas-data --timeout=600s
 kubectl apply -f deploy/platform/cloudnative-pg/databases.yaml
 kubectl get database -n atlas-data
-
-# 3d. PgBouncer pooler (the 8 services connect through it — see the connection note below).
-# Multiplexes app transactions over few server conns so scaling out never trips max_connections:200.
-kubectl apply -f deploy/platform/cloudnative-pg/pooler.yaml
-kubectl -n atlas-data wait --for=condition=ready pod \
-  -l cnpg.io/poolerName=atlas-pg-pooler-rw --timeout=300s
 ```
 
 > **Stuck here?** An `initdb` pod `Pending` on an unbound PVC is
@@ -179,9 +173,7 @@ kubectl -n atlas-data wait --for=condition=ready pod \
 > different failure —
 > [TS-PLATFORM-06](./deploy/TROUBLESHOOTING.md#ts-platform-06--stateful-pod-stuck-containercreating-with-a-bound-pvc).
 
-Connection string (already in the Helm values): the services connect through the **pooler**,
-`atlas-pg-pooler-rw.atlas-data:5432/<db>?prepareThreshold=0` (transaction-mode PgBouncer needs
-`prepareThreshold=0`). The direct primary is `atlas-pg-rw.atlas-data:5432/<db>`
+Connection string (already in the Helm values): `atlas-pg-rw.atlas-data:5432/<db>`
 (`-rw` primary; `-ro` read replicas).
 
 ## 4. Kafka (Strimzi, KRaft — no ZooKeeper)

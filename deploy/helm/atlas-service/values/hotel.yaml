@@ -7,7 +7,7 @@ image:
 
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
-  DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/hotel_db?prepareThreshold=0
+  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/hotel_db
   INVENTORY_SERVICE_URL: http://inventory-service:8080
 
 envSecret:

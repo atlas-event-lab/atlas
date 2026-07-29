@@ -20,7 +20,7 @@ Namespaces: `atlas-system` (ingress, Keycloak), `atlas-data` (Postgres, Kafka),
 |------|-----------|--------------|
 | [`00-namespaces.yaml`](./00-namespaces.yaml) | The three namespaces | Runbook §1 |
 | [`ingress-nginx/values.yaml`](./ingress-nginx) | ingress-nginx Helm values (single public LB) | Runbook §2 |
-| [`cloudnative-pg/`](./cloudnative-pg) | CNPG `cluster.yaml`, `databases.yaml`, `pooler.yaml`, and `create-db-secrets.sh` | Runbook §3 |
+| [`cloudnative-pg/`](./cloudnative-pg) | CNPG `cluster.yaml`, `databases.yaml`, and `create-db-secrets.sh` | Runbook §3 |
 | [`strimzi/`](./strimzi) | Kafka CR (`kafka.yaml`), `topics.yaml`, metrics & rebalance | Runbook §4 |
 | [`keycloak/`](./keycloak) | Keycloak CR, `realm-import.yaml`, ingress | Runbook §5 |
 | [`apps/`](./apps) | `wiremock.yaml` (fake payment provider), `atlas-ingress.yaml` (edge routing), deployer RBAC | Runbook §6 |

@@ -18,9 +18,10 @@ terraform init && terraform apply
 #### Option B - Civo
 ```bash
 cd deploy/cluster/civo/terraform      # from repo root
-export CIVO_TOKEN="your-civo-api-key"
+export CIVO_TOKEN="your-civo-api-key" #got to your civo Dashboard (Account → Security → API keys)
 terraform init && terraform apply
-./save-kubeconfig.sh && export KUBECONFIG=~/.kube/civo-atlas.yaml
+./save-kubeconfig.sh
+export KUBECONFIG=~/.kube/civo-atlas.yaml
 ```
 
 After the cluster is ready, verify that all nodes are healthy:
@@ -32,9 +33,9 @@ kubectl get nodes                                      # expect 3 Ready nodes BE
 All the steps below are vendor-agnostic:
 
 ```
-# 2. Bootstrap (from the repo root). Vendor-agnostic — runs against whatever cluster your
-#    kubectl points at. No arguments needed.
-./deploy/argocd/bootstrap.sh
+# 2. Bootstrap (from the repo root). Vendor-agnostic — runs against whatever cluster your kubectl points at. No arguments needed.
+# from repo root
+./deploy/argocd/bootstrap.sh  
 
 # 3. Open the Argo CD UI from the printed URL card and watch it go green.
 #    While it converges, open Grafana, Kafka UI and a DB session — see
@@ -329,7 +330,7 @@ The load-test user pool was already seeded by `bootstrap.sh` (`--loadtest-users`
 |------|-----------|
 | `bootstrap.sh` | The one imperative script (secrets, WireMock CM, installs Argo CD, applies the root app, patches the LB host). Idempotent. |
 | `root-app.yaml` | The **app-of-apps** root — a `directory` Application over `apps/` (recurse). Creates every child. |
-| `apps/*.yaml` | The 25 child Applications / the services `ApplicationSet`, each with a `sync-wave`. |
+| `apps/*.yaml` | The 24 child Applications / the services `ApplicationSet`, each with a `sync-wave`. |
 | `projects/atlas-project.yaml` | The `atlas` AppProject — whitelists source repos, destinations, cluster kinds. |
 | `install/argocd-values.yaml` | Helm values for Argo CD itself (ingress host, `server.insecure`, RBAC). |
 | `install/argocd-cm-health.yaml` | Custom health for the CNPG `Cluster` / Strimzi `Kafka` / `Keycloak` CRs. |
@@ -350,7 +351,7 @@ real Postgres/Kafka/Keycloak readiness (not just "the object exists").
 | **1** | `ingress-nginx`, `metrics-server` | ingress-nginx **provisions the LoadBalancer** (its IP drives Phase B); metrics-server backs the HPAs. |
 | **2** | `cnpg-operator`, `strimzi-operator`, `keycloak-operator`, `kube-prometheus-stack`, `keda-operator` | Operators + their **CRDs** (CRD-before-CR). |
 | **3** | `cnpg-cluster`, `kafka-cluster`, `redis`, `obs-loki`, `obs-tempo`, `obs-alloy` | The stateful CRs — gated on the operators, and held Progressing by custom health until Ready. |
-| **4** | `cnpg-databases`, `cnpg-pooler`, `kafka-topics`, `obs-config` | Depend on a **Ready** Postgres/Kafka; the PgBouncer pooler the services connect through; Grafana datasources + dashboards. |
+| **4** | `cnpg-databases`, `kafka-topics`, `obs-config` | Depend on a **Ready** Postgres/Kafka; Grafana datasources + dashboards. |
 | **5** | `keycloak` | Needs `keycloak_db` + `keycloak-db-secret` (wave 4). |
 | **6** | `wiremock` | Fake payment provider; payment depends on it. |
 | **7** | `atlas-services` (**ApplicationSet**) | The 8 services — one Application per `values/<svc>.yaml`. |

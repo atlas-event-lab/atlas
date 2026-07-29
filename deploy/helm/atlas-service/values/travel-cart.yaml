@@ -17,7 +17,7 @@ podAntiAffinity:
   enabled: true
 
 config:
-  DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/travel_cart_db?prepareThreshold=0
+  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/travel_cart_db
   REDIS_HOST: redis.atlas-data
   REDIS_PORT: "6379"
 
