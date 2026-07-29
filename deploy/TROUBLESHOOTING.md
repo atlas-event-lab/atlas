@@ -73,6 +73,12 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 The fix is the same for both: **re-fetch the kubeconfig from Civo** (never reuse the old file,
 and don't rely on `terraform output` here).
 
+> **The happy path already handles this.** `deploy/cluster/civo/terraform/save-kubeconfig.sh`
+> (used by the Quick start and by `ops/civo/cluster.sh up`) tries `terraform output` and, when it
+> comes back empty, **automatically falls back to the Civo CLI** — so a normal run never lands
+> here. Reach for the manual steps below only if that script itself failed (e.g. the Civo CLI
+> isn't installed or authenticated).
+
 **Fix.** Fetch the kubeconfig with the Civo CLI **to stdout** (not `--save`) and point
 `KUBECONFIG` at that file:
 

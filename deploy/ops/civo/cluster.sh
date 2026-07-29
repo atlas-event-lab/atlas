@@ -49,7 +49,13 @@ cmd_up() {
   log "Creating the Civo cluster via Terraform ($TF_DIR)..."
   terraform -chdir="$TF_DIR" init -input=false
   terraform -chdir="$TF_DIR" apply
-  log "Save kubeconfig: terraform -chdir=$TF_DIR output -raw kubeconfig > ~/.kube/civo-atlas.yaml"
+  # Save the kubeconfig reliably (the civo provider often returns an empty one right after apply —
+  # the helper falls back to the Civo CLI). Then point kubectl at it.
+  if bash "$TF_DIR/save-kubeconfig.sh"; then
+    log "Run:  export KUBECONFIG=~/.kube/civo-atlas.yaml && kubectl get nodes"
+  else
+    warn "Could not save the kubeconfig automatically — see TROUBLESHOOTING TS-CIVO-01."
+  fi
 }
 
 # Release the CSI-provisioned block volumes BEFORE Terraform touches the network.

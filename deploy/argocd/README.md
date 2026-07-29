@@ -9,9 +9,10 @@ Deploy Atlas with `terraform apply` + **one** `bootstrap.sh`, then watch the who
 ```bash
 # 1. Provision a cluster (skip if you already have one + kubectl context).
 cd deploy/cluster/civo/terraform && terraform apply    # or OKE — see deploy/cluster/README.md
-terraform output -raw kubeconfig > ~/.kube/civo-atlas.yaml   # save it (empty file, or i/o timeout on a recreated cluster? → TS-CIVO-01)
-export KUBECONFIG=~/.kube/civo-atlas.yaml
+./save-kubeconfig.sh                                    # writes ~/.kube/civo-atlas.yaml reliably
+export KUBECONFIG=~/.kube/civo-atlas.yaml               #   (falls back to the Civo CLI if terraform's kubeconfig is empty)
 kubectl get nodes                                      # expect 3 Ready nodes BEFORE step 2
+cd -                                                   # back to the repo root for step 2
 
 # 2. Bootstrap (from the repo root). No arguments needed.
 ./deploy/argocd/bootstrap.sh
