@@ -44,3 +44,14 @@ chunksCache:  { enabled: false }
 resultsCache: { enabled: false }
 lokiCanary:   { enabled: false }
 test:         { enabled: false }
+
+# Fully-qualify the sidecar image registry. The chart defaults to the short name
+# `kiwigrid/k8s-sidecar`, which container runtimes that enforce short-name resolution
+# (Oracle Linux / OKE nodes: `short-name-mode = "enforcing"`) reject as ambiguous — the
+# `loki-sc-rules` container then never starts (ImageInspectError) and the app hangs
+# Progressing. Pinning `docker.io/` resolves to the exact same image everywhere (it's the
+# form permissive runtimes like Civo's already produce), so this is vendor-agnostic, not
+# vendor-specific. Tag is inherited from the chart.
+sidecar:
+  image:
+    repository: docker.io/kiwigrid/k8s-sidecar
