@@ -1,0 +1,29 @@
+# Wave 4 — the CNPG PgBouncer Pooler `atlas-pg-pooler-rw` (ADR-0032). Gated behind the wave-3
+# Cluster being Ready via custom health, same as the databases app. `include` picks only
+# pooler.yaml from the cloudnative-pg dir (cluster.yaml/databases.yaml are their own apps).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-pooler
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: atlas
+  source:
+    repoURL: https://github.com/atlas-event-lab/hub.git
+    targetRevision: main
+    path: deploy/platform/cloudnative-pg
+    directory:
+      recurse: false
+      include: 'pooler.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: atlas-data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

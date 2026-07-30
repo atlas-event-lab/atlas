@@ -1,0 +1,86 @@
+# PgBouncer connection pooler for Atlas (ADR-0032 — relieve max_connections: 200).
+#
+# WHY: under load/HPA the stateless services scale to 3–4 pods each; every pod's Hikari
+# pool opens direct connections to Postgres. Without pooling, aggregate client connections
+# blow past the cluster's `max_connections: 200` (see cluster.yaml) — an ARTIFICIAL limit,
+# not a real resource one. PgBouncer multiplexes many short app transactions over a small,
+# bounded set of real server connections, so `max_connections` stops being the bottleneck.
+#
+# HOW IT WORKS (CNPG native Pooler CRD):
+#   - One `rw` pooler in front of the primary (atlas-pg-rw). It sets only the `*` fallback
+#     database, so the dbname in each client connection string is passed through to
+#     Postgres. => a SINGLE pooler serves ALL service databases (booking_db, search_db, …).
+#   - Auth is handled automatically by the operator (auth_query via a dedicated
+#     `cnpg_pooler_pgbouncer` role + TLS cert). No manual SQL, no extra secrets.
+#   - Creates a Service `atlas-pg-pooler-rw` (port 5432) that apps connect to instead of
+#     `atlas-pg-rw`.
+#
+# POOL MODE = transaction: the multiplexing mode. A server connection is returned to the
+#   pool at the end of each transaction, so few server conns serve many clients.
+#   CAVEAT: server-side prepared statements and session state don't survive across
+#   transactions. Apps MUST disable server-side prepared statements — append
+#   `?prepareThreshold=0` to the JDBC DB_URL when cutting a service over. Flyway keeps a
+#   DIRECT connection to atlas-pg-rw (its session-level lock is unsafe here) — see ADR-0033.
+#
+# GITOPS: synced by the Argo app deploy/argocd/apps/35-cnpg-pooler.yaml (wave 4, after the
+# Cluster is Ready). The Pooler name MUST differ from the Cluster name (atlas-pg).
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: atlas-pg-pooler-rw
+  namespace: atlas-data
+spec:
+  cluster:
+    name: atlas-pg                   # immutable; points at the primary (rw) service
+  instances: 2                       # HA: 2 PgBouncer pods, spread by anti-affinity below
+  type: rw
+
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      # Accept many app-side connections; they're cheap and multiplexed.
+      max_client_conn: "400"
+      # Real server connections per (user,database) pair. 9 service DBs × 12 = up to ~108
+      # server conns at full spread — comfortably under max_connections: 200, leaving room
+      # for Keycloak (direct), replication and admin/superuser slots.
+      default_pool_size: "12"
+      min_pool_size: "0"             # no idle server conns while services are pre-cutover
+      reserve_pool_size: "3"         # burst headroom per pool
+      reserve_pool_timeout: "3"
+      server_idle_timeout: "120"
+      # Surface pooler errors in logs during the experiments.
+      log_pooler_errors: "1"
+
+  # Small footprint — mindful of the ~45-pod node cap (see deployment-roadmap §10.5).
+  template:
+    metadata:
+      labels:
+        app: atlas-pg-pooler-rw
+    spec:
+      containers: []                 # required by the PodSpec schema; operator injects pgbouncer
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - { key: app, operator: In, values: [atlas-pg-pooler-rw] }
+                topologyKey: kubernetes.io/hostname
+---
+# Prometheus scrape for the pooler (Phase 6 integration).
+# The operator's built-in enablePodMonitor is deprecated, so we own this PodMonitor.
+# kube-prometheus-stack picks it up (podMonitorSelectorNilUsesHelmValues: false).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: atlas-pg-pooler-rw
+  namespace: atlas-data
+  labels:
+    app.kubernetes.io/part-of: cloudnative-pg
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/poolerName: atlas-pg-pooler-rw
+  podMetricsEndpoints:
+    - port: metrics                  # PgBouncer exporter on :9127 -> cnpg_pgbouncer_* metrics
