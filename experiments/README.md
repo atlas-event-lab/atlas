@@ -48,6 +48,9 @@ against that baseline.
 | 06 | [DLQ Recovery](./06-dlq-recovery) | Resilience | A poison message parks in the DLQ; a recoverable one replays cleanly |
 | 07 | [Read Model Rebuild](./07-read-model-rebuild) | Architecture | The CQRS read side is fully derivable by replaying events |
 
+Grafana includes dashboards for almost all experiments. Experiment 03 reuses the dashboard from Experiment 02. It also provides useful dashboards for Kafka, HTTP metrics by endpoint, and CloudNativePG database metrics.
+![Grafana Dashboards](../assets/grafana%20dashboards.jpg)
+
 ### Results so far
 
 Each folder's `RESULTS*.md` holds the raw runs; this is the summary verdict.
@@ -79,8 +82,7 @@ All seven have a folder, a runnable artifact. See each folder's README for detai
 
 ```bash
 cp .env.example .env
-# edit .env: gateway URL, Keycloak URL, the load-test client secret + test user, and a
-# flight route that has seeded inventory.
+# edit .env: ATLAS_GATEWAY, KEYCLOAK_URL
 ```
 
 Everything is environment-driven — no cluster specifics are baked into the scripts, so the

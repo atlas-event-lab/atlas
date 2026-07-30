@@ -126,18 +126,16 @@ guess it.
 
 ## What to watch (Grafana)
 
-A dedicated dashboard ships with this experiment: **Atlas — Experiment 01: High Booking
-Concurrency** (`deploy/platform/observability/atlas-exp01-dashboard.yaml`).
+A dedicated dashboard ships with this experiment: **Atlas — Experiment 01: High Booking**
+Also you can use **Atlas — HTTP RED (per endpoint)** and **Atlas — Kafka / Event Backbone**
 
 ```bash
-# Apply once — the Grafana sidecar auto-loads it into the "Atlas" folder:
-kubectl apply -f deploy/platform/observability/atlas-exp01-dashboard.yaml
+# Open Grafana localhost:3000
 kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80    # admin / atlas-admin
-
-# (optional) stream k6's OWN metrics into the same dashboard:
-kubectl -n atlas-observability port-forward svc/kps-kube-prometheus-stack-prometheus 9090:9090
-make -C .. run EXP=01-high-booking-concurrency PROM=1
 ```
+![Exp01 Dashboard](../../assets/exp01-dashboard.jpg)
+![Http Booking Service Dashboard](../../assets/http_booking_service_dashboard.jpg)
+
 
 | Layer | Panel / query | What "healthy" looks like |
 |-------|---------------|---------------------------|

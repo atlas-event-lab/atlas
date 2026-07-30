@@ -65,10 +65,10 @@ pool, so the cluster comes up ready for `experiments/`.
 |---|---|
 | ✅ DB secrets, `atlas-issuer`, `atlas-realm-credentials`, Kafka UI basic-auth | generated per cluster, never in git |
 | ✅ `atlas-user` / `atlas-admin` with working passwords | from `atlas-realm-credentials` |
-| ✅ `loadtest-1…N` pool | `--loadtest-users N` (default 200, `0` skips) |
+| ✅ `loadtest-1…N` pool | `--loadtest-users N` (default 200, `0` skips) **Note**: This is the slowest step of the process, so please be patient and let it complete. ![loadtest-users](../../assets/loadtest-users.jpg)|
 | ✅ public `nip.io` hostnames patched onto Argo CD, Keycloak, Kafka UI | the LB IP is only known at runtime |
 | ❌ the **catalog is not published** | needs the services healthy first — two POSTs, see [Publish the catalog](#publish-the-catalog--and-watch-it-happen) |
-| ❌ `temp-admin` is still Keycloak's bootstrap admin | replace and delete it — same section |
+
 
 **Useful flags** (all optional):
 
@@ -84,10 +84,13 @@ pool, so the cluster comes up ready for `experiments/`.
 
 Set these up while Argo finishes converging. The point is to have the four views **already
 open** when you publish the catalog, so you watch the events flow instead of reading about it
-afterwards. `LB` is the IP printed on the bootstrap card.
+afterwards. `LB` is the IP printed on the bootstrap card, it looks like the following example:
+
+![Printed card](../../assets/print_card.jpg)
 
 ```bash
-LB=<the IP from the bootstrap card> # or use: kubectl -n atlas-system get svc ingress-nginx-controller (EXTERNAL-IP = LoadBalancer IP)
+# In case you don't see the bootstrap card, you can get the LB with:
+kubectl -n atlas-system get svc ingress-nginx-controller #(EXTERNAL-IP = LoadBalancer IP)
 ```
 
 ### Argo CD — the deployment itself
@@ -104,6 +107,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.pas
 Wave by wave, tiles go yellow → green. Services (wave 7) show **red** until Postgres, Kafka and
 Keycloak are ready above them — that is the ordering working, not a failure.
 
+![Argo goes green](../../assets/argocd_green.gif)
+
 ### Grafana — metrics, logs, traces
 
 Run the following command to open a connection to the Kubernetes cluster and forward the Grafana service to your local machine on port `3000`. Keep this terminal window running while you use Grafana.
@@ -113,7 +118,7 @@ kubectl -n atlas-observability port-forward svc/kps-grafana 3000:80
 #   http://localhost:3000     admin / atlas-admin
 ```
 
-All four Atlas dashboards live in the **Atlas** folder and are provisioned by Argo (wave 4) —
+All Atlas dashboards live in the **Atlas** folder and are provisioned by Argo (wave 4) —
 you do not import anything:
 
 | Dashboard | uid | What it is for |
@@ -235,8 +240,6 @@ any other event — same path, no shortcut.
 Wait until the `*-service` apps are green in Argo, then:
 
 ```bash
-LB=<the IP from the bootstrap card>
-
 # ADMIN token. Both endpoints are @PreAuthorize("hasRole('ADMIN')"), so atlas-user gets a 403.
 # atlas-admin carries the ADMIN realm role; its password is in atlas-realm-credentials.
 ADMIN_PW=$(kubectl -n atlas-system get secret atlas-realm-credentials \
@@ -267,9 +270,11 @@ curl -s -X POST http://$LB/api/v1/hotels/reconciliation  -H "Authorization: Bear
    SELECT event_type, status, created_at, published_at FROM outbox ORDER BY created_at DESC LIMIT 10;
    ```
 2. **Kafka UI → Topics** — message counts leave zero on the catalog topics.
+   ![Kafka UI](../../assets/publish_catalog_kafka_ui.jpg)
 3. **Kafka UI → Consumer Groups** — `inventory-service` and `search-service` lag spikes, then
    drains back to `0`. Lag that climbs and stays means a consumer is down; it is the same
    signal the load experiments watch and KEDA scales on.
+   ![Kafka UI Consumer](../../assets/publish_catalog_kafka-ui_2.jpg)
 4. **`search_db`** — the read model fills up, built entirely from events:
    ```sql
    SELECT count(*) FROM flight_projections;
@@ -278,21 +283,14 @@ curl -s -X POST http://$LB/api/v1/hotels/reconciliation  -H "Authorization: Bear
    ```
    `consumed_events` is the idempotency ledger — the reason replaying a duplicate event
    changes nothing. Compare its count with what Kafka UI reports delivered.
-5. **Grafana → Atlas — HTTP RED** — your two POSTs as traffic on `flight-service` and
-   `hotel-service`, and the consumer-side work on `inventory-service` and `search-service`. A
-   flat error rate is what you want.
-6. **Grafana → Atlas — Kafka** — the same lag story as Kafka UI, in the shape you will read
+5. **Grafana → Atlas — Kafka** — the same lag story as Kafka UI, in the shape you will read
    during load. And **CNPG** shows the write burst from the outbox inserts.
-7. **Tempo** — pick a request in the RED latency panel and follow its exemplar into the trace.
-   This is the tooling that later shows a booking saga threaded across six services.
-
+   ![Kafka Dashboard](../../assets/publish_catalog_kafka_dashboard.jpg)
+6. **Loki** — Explore the logs from the Inventory and Search services. Follow how they consume events 
+through Kafka and understand the processing logic behind those events.
+   ![Loki logs](../../assets/publis_catalog_logs.jpg)
+   
 Produced, transported, consumed, projected — the whole architecture, from two commands.
-
-**Confirm and move on:**
-
-```bash
-curl -s "http://$LB/api/v1/search/flights" | jq 'length'   # was 0, now > 0
-```
 
 > Re-running the reconciliation is safe: it only picks up rows with no Created event, so a
 > second call after a successful one publishes nothing.

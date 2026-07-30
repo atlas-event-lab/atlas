@@ -123,3 +123,42 @@ Verdict:  PASS / FAIL — <one line>
 Notes / follow-ups:  
 Now this time the bottleneck was wiremock (fake payment provider), due to a restart that caused a lag on payment, it reached 4k at the end.
 ```
+
+---
+
+```
+### Run 2026-07-30   (Oracle OKE, LB 129.80.131.230)
+
+Config
+- Scenario:                   both
+- Discovery:                  ROUTES=… (from lib/k6/config.js)
+- Commit / image tags:        booking=…  inventory=…  payment=…   (not recorded)
+- Cluster shape:              Oracle OKE — nodes=3×(2 OCPU / 16 GB = 4 vCPU / 15.3 GiB), max-pods=30
+- HPA:                        booking 2/4  inventory 2/4  search 1/3  travel-cart 1/3  payment(keda) 1/4
+- Pooler:                     transaction, default_pool_size=12
+- k6 knobs:                   TARGET_RPS=60  RAMP=(default)  HOLD=4m  MAX_VUS=200   (wall time 11m18s)
+
+Results (from k6 summary)
+- Bookings created (201) / replayed (200) / failed:  21967 / — / 0
+- journey_success_rate / booking_accept_rate:  100% (21967/21967)
+- cart_create_duration p95:               410.30 ms
+- cart_add_item_duration p95:             403.27 ms
+- cart_convert_duration p95:              404.59 ms
+- booking_create_duration p50 / p90 / p95: 301.74ms / 441.82ms / 526.15ms   (avg 340ms, max 4.39s)
+- journey_duration p50 / p90 / p95:       1.06s / 1.39s / 1.89s   (avg 1.19s, max 11.23s)
+- http_req_failed:                        0.04%   (48 / 110822)
+- http_reqs:                              110822   (163.4/s)
+- Achieved throughput (journeys/s):       32.39   (target 60 not reached; dropped_iterations=293)
+- Thresholds:                             ALL PASS — booking_accept_rate 100% (>0.99) · booking_create p95 526ms (<2000) · http_req_failed 0.04% (<2%) · journey_duration p95 1.89s (<4000) · journey_success 100% (>0.98)
+
+Observed (from Grafana)
+- NOT CAPTURED this run — k6 summary only.
+- Post-run HPA snapshot (cooling down, NOT the peak): booking=4, inventory=4, search=3, travel-cart=3, payment=4.
+- Postgres connections: 200
+
+Verdict:  PASS — 100% journey success with all 5 thresholds green; p95 journey 1.89s, zero booking failures, HTTP error rate 0.04%.
+Notes / follow-ups:
+* Clean pass, no error cliff: this is headroom (latency), not failure. Best booking p95 (526ms) and journey p95 (1.89s) of the recorded runs.
+* Achieved ~32 journeys/s against TARGET_RPS=60 with only 293 dropped iterations and low post-run CPU → throughput here looks capped by the load driver (VU/user pool of 200), not the system. Raise the pool (>200 users) and/or the executor to push past it and find the real OKE knee (Civo knee was ~35 journeys/s).
+* Grafana metrics not captured — repeat watching the dashboards to fill the Observed section for a complete baseline entry.
+```
