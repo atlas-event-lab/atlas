@@ -48,6 +48,8 @@ concern is moot).
 > so a midnight rollover fails loudly instead of masquerading as divergence. Full reasoning:
 > [`derivable-scope.md`](./derivable-scope.md).
 
+![Experiment 07](../../assets/exp07-retention-gap.svg)
+
 ## What it does
 
 `runbook.sh` (search-side, no code change — proves derivability **within retention**):

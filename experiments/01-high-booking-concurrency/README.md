@@ -19,6 +19,8 @@ As booking traffic rises, the system scales horizontally instead of falling over
    is within capacity; degradation, when it comes, is graceful (rising latency / queueing)
    rather than a cliff of errors.
 
+![Experiment 01](../../assets/exp01-runs.svg)
+
 ## What it does
 
 `load.js` drives the full **checkout journey** at a **ramping arrival rate** (journeys

@@ -41,6 +41,8 @@ When already-processed `booking.created` events are **redelivered** to `inventor
 Falsifiable: if `reserved_count` changes, or a new reservation/outbox row appears, or
 `reservations_total{result="reserved"}` increments after the replay, idempotency failed.
 
+![Experiment 03](../../assets/exp03-idempotency.svg)
+
 ## What it does
 
 `runbook.sh` performs a controlled **offset replay** — the faithful shape of at-least-once

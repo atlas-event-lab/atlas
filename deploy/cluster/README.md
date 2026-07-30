@@ -43,6 +43,8 @@ reference node pool that hosts it:
 | Storage | A block-storage `StorageClass` | Postgres/Kafka/observability PVCs |
 | Load balancer | 1 cloud LB + stable public IP | Single entry point; Keycloak issuer is pinned to it |
 
+![Memory budget](../../assets/node-memory-budget.svg)
+
 > **Memory is the ceiling, not CPU.** Under load the app tier peaks well within its CPU
 > limits but close to its memory requests, so size for RAM first. A leaner
 > **6 vCPU / 24 GB** (3 × 2 vCPU / 8 GB) runs the baseline, but leaves little room for the
@@ -66,6 +68,7 @@ free-trial credits.
 | Node pool | **3 × `VM.Standard.E5.Flex`, 2 OCPU / 16 GB**, ~30 pods/node, 50 GB boot |
 | Storage | OCI Block Volume (`oci-bv` StorageClass) via the OCI CSI driver |
 | Edge | OCI-managed LoadBalancer on a service-LB subnet |
+| Cost | **$286.12/mo at 24×7** ($74.40 Enhanced cluster fee + $205.34 compute + $6.38 boot storage); ~$110/mo at 4 h/day. The cluster fee **does not** stop when the pool scales to 0 — see [`deploy/ops/`](../ops/README.md) |
 
 > **OCPU vs vCPU.** On OCI, `E5.Flex` is AMD EPYC (x86) where **1 OCPU = 2 vCPU**, so the
 > pool above is **12 vCPU / 48 GB** in the terms used everywhere else on this page.
@@ -83,9 +86,11 @@ terraform init && terraform apply
 See [`oracle/terraform/README.md`](./oracle/terraform/README.md) for auth setup and a
 first-run note on verifying the module inputs.
 
-**Operate (cost control):** scale the worker pool to 0 when idle (the real credit-saver)
-with [`deploy/ops/`](../ops/README.md) — set `NODEPOOL_OCID` to your own pool (from
-`terraform output worker_pool_ids`):
+**Operate (cost control):** scale the worker pool to 0 when idle with
+[`deploy/ops/`](../ops/README.md) — set `NODEPOOL_OCID` to your own pool (from
+`terraform output worker_pool_ids`). This removes the $211.72/mo of compute and boot
+volumes; on an **Enhanced** cluster the $74.40/mo cluster fee keeps running, so use
+`terraform destroy` to reach $0:
 
 ```bash
 cd deploy/ops/oracle                  # from repo root

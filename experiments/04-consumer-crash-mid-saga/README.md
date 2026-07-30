@@ -63,6 +63,8 @@ offset commit) while a controlled batch of N bookings is draining through the Sa
 Falsifiable: a second `Payment` for the same booking, a duplicate charge at the provider, a
 booking permanently stuck, or lag that never drains — any of these fails the experiment.
 
+![Experiment 04](../../assets/exp04-crash-windows.svg)
+
 ## What it does
 
 `runbook.sh` orchestrates the whole run:

@@ -1,0 +1,788 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="520" viewBox="0 0 1040 520" role="img" aria-label="Memory budget of the reference Atlas cluster. Of about 42 GiB allocatable across three 16 GB nodes, the lean baseline stack uses 12 to 14 GiB and the worst case with everything scaled at once reaches about 25 GiB, leaving headroom. The second bar shows that at 16 GB the binding limit becomes the pod cap, not memory.">
+<rect width="1040" height="520" fill="#FCFBF9"/>
+<circle cx="14" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="14" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="42" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="70" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="98" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="126" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="154" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="182" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="210" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="238" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="266" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="294" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="322" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="350" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="378" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="406" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="434" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="462" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="490" r="1" fill="#EAE5DB"/>
+<circle cx="14" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="42" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="70" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="98" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="126" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="154" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="182" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="210" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="238" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="266" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="294" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="322" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="350" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="378" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="406" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="434" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="462" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="490" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="518" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="546" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="574" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="602" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="630" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="658" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="686" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="714" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="742" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="770" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="798" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="826" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="854" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="882" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="910" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="938" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="966" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="994" cy="518" r="1" fill="#EAE5DB"/>
+<circle cx="1022" cy="518" r="1" fill="#EAE5DB"/>
+<text x="40" y="52" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif"><tspan font-size="25" font-weight="700" fill="#16202B">Sizing the nodes</tspan><tspan font-size="14.5" font-weight="500" fill="#78828E" dx="12">· memory is the ceiling, not CPU</tspan></text>
+<text x="40" y="75.75" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#98A2AE" text-anchor="start">Under load the app tier peaks well within its CPU limits but close to its memory requests — so size for RAM first, then check the pod cap.</text>
+<text x="40" y="116" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#78828E" text-anchor="start">3 nodes</text>
+<rect x="108" y="100" width="106" height="26" rx="8" fill="#FFFFFF" stroke="#D7DDE4" stroke-width="1.4"/>
+<polygon points="125.00,105.00 131.25,108.01 132.80,114.78 128.47,120.21 121.53,120.21 117.20,114.78 118.75,108.01" fill="#326CE5"/>
+<polygon points="125.00,108.20 128.75,110.01 129.68,114.07 127.08,117.32 122.92,117.32 120.32,114.07 121.25,110.01" fill="none" stroke="#FFFFFF" stroke-width="1.04"/>
+<line x1="125.00" y1="113.00" x2="125.00" y2="108.20" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="125.00" y1="113.00" x2="128.75" y2="110.01" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="125.00" y1="113.00" x2="129.68" y2="114.07" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="125.00" y1="113.00" x2="127.08" y2="117.32" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="125.00" y1="113.00" x2="122.92" y2="117.32" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="125.00" y1="113.00" x2="120.32" y2="114.07" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="125.00" y1="113.00" x2="121.25" y2="110.01" stroke="#FFFFFF" stroke-width="0.96"/>
+<circle cx="125" cy="113" r="1.60" fill="#FFFFFF"/>
+<text x="139" y="117" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="600" fill="#5F6B78" text-anchor="start">4 vCPU / 16 GB</text>
+<rect x="226" y="100" width="106" height="26" rx="8" fill="#FFFFFF" stroke="#D7DDE4" stroke-width="1.4"/>
+<polygon points="243.00,105.00 249.25,108.01 250.80,114.78 246.47,120.21 239.53,120.21 235.20,114.78 236.75,108.01" fill="#326CE5"/>
+<polygon points="243.00,108.20 246.75,110.01 247.68,114.07 245.08,117.32 240.92,117.32 238.32,114.07 239.25,110.01" fill="none" stroke="#FFFFFF" stroke-width="1.04"/>
+<line x1="243.00" y1="113.00" x2="243.00" y2="108.20" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="243.00" y1="113.00" x2="246.75" y2="110.01" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="243.00" y1="113.00" x2="247.68" y2="114.07" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="243.00" y1="113.00" x2="245.08" y2="117.32" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="243.00" y1="113.00" x2="240.92" y2="117.32" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="243.00" y1="113.00" x2="238.32" y2="114.07" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="243.00" y1="113.00" x2="239.25" y2="110.01" stroke="#FFFFFF" stroke-width="0.96"/>
+<circle cx="243" cy="113" r="1.60" fill="#FFFFFF"/>
+<text x="257" y="117" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="600" fill="#5F6B78" text-anchor="start">4 vCPU / 16 GB</text>
+<rect x="344" y="100" width="106" height="26" rx="8" fill="#FFFFFF" stroke="#D7DDE4" stroke-width="1.4"/>
+<polygon points="361.00,105.00 367.25,108.01 368.80,114.78 364.47,120.21 357.53,120.21 353.20,114.78 354.75,108.01" fill="#326CE5"/>
+<polygon points="361.00,108.20 364.75,110.01 365.68,114.07 363.08,117.32 358.92,117.32 356.32,114.07 357.25,110.01" fill="none" stroke="#FFFFFF" stroke-width="1.04"/>
+<line x1="361.00" y1="113.00" x2="361.00" y2="108.20" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="361.00" y1="113.00" x2="364.75" y2="110.01" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="361.00" y1="113.00" x2="365.68" y2="114.07" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="361.00" y1="113.00" x2="363.08" y2="117.32" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="361.00" y1="113.00" x2="358.92" y2="117.32" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="361.00" y1="113.00" x2="356.32" y2="114.07" stroke="#FFFFFF" stroke-width="0.96"/>
+<line x1="361.00" y1="113.00" x2="357.25" y2="110.01" stroke="#FFFFFF" stroke-width="0.96"/>
+<circle cx="361" cy="113" r="1.60" fill="#FFFFFF"/>
+<text x="375" y="117" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="600" fill="#5F6B78" text-anchor="start">4 vCPU / 16 GB</text>
+<text x="474" y="117" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.8" font-weight="400" fill="#98A2AE" text-anchor="start">=  12 vCPU / 48 GB raw  -&gt;  ~42 GiB allocatable after kubelet + system reserves</text>
+<text x="40" y="164" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#78828E" text-anchor="start" letter-spacing="0.08em">MEMORY</text>
+<rect x="108" y="176" width="836" height="52" rx="9" fill="#F1F4F7" stroke="#DCE2E9" stroke-width="1.3"/>
+<rect x="108" y="176" width="278.66666666666663" height="52" rx="9" fill="#4F63D2" stroke="none" stroke-width="0"/>
+<rect x="377.7" y="176" width="9" height="52" fill="#4F63D2"/>
+<rect x="386.66666666666663" y="176" width="218.95238095238096" height="52" rx="0" fill="#4F63D2" stroke="none" stroke-width="0" opacity="0.3"/>
+<line x1="605.6" y1="170" x2="605.6" y2="234" stroke="#4F63D2" stroke-width="1.8" stroke-dasharray="5 4"/>
+<text x="124" y="200" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="start">lean baseline</text>
+<text x="124" y="215" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#D7DCF5" text-anchor="start">12–14 GiB  ·  ~30%</text>
+<text x="400.66666666666663" y="200" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3D4C87" text-anchor="start">everything at once</text>
+<text x="400.66666666666663" y="215" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5C6795" text-anchor="start">~25 GiB peak</text>
+<text x="621.6190476190476" y="200" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#78828E" text-anchor="start">still free</text>
+<text x="621.6190476190476" y="215" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#98A2AE" text-anchor="start">~17 GiB</text>
+<line x1="108.0" y1="228" x2="108.0" y2="233" stroke="#C8D0D9" stroke-width="1.1"/>
+<text x="108.0" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="middle">0</text>
+<line x1="247.3" y1="228" x2="247.3" y2="233" stroke="#C8D0D9" stroke-width="1.1"/>
+<text x="247.33333333333331" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="middle">7</text>
+<line x1="386.7" y1="228" x2="386.7" y2="233" stroke="#C8D0D9" stroke-width="1.1"/>
+<text x="386.66666666666663" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="middle">14</text>
+<line x1="526.0" y1="228" x2="526.0" y2="233" stroke="#C8D0D9" stroke-width="1.1"/>
+<text x="526.0" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="middle">21</text>
+<line x1="665.3" y1="228" x2="665.3" y2="233" stroke="#C8D0D9" stroke-width="1.1"/>
+<text x="665.3333333333333" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="middle">28</text>
+<line x1="804.7" y1="228" x2="804.7" y2="233" stroke="#C8D0D9" stroke-width="1.1"/>
+<text x="804.6666666666667" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="middle">35</text>
+<line x1="944.0" y1="228" x2="944.0" y2="233" stroke="#C8D0D9" stroke-width="1.1"/>
+<text x="944.0" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="middle">42</text>
+<text x="960" y="247" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="9.4" font-weight="500" fill="#98A2AE" text-anchor="start">GiB</text>
+<text x="108" y="270" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10.2" font-weight="400" fill="#98A2AE" text-anchor="start">The lean stack is apps + CNPG + one Kafka broker + Keycloak + the LGTM stack. The peak adds HPA scale-up, a 3-broker Kafka, a CNPG replica and Tempo.</text>
+<text x="40" y="308" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#78828E" text-anchor="start" letter-spacing="0.08em">POD CAP</text>
+<rect x="108" y="320" width="836" height="46" rx="9" fill="#F1F4F7" stroke="#DCE2E9" stroke-width="1.3"/>
+<rect x="108" y="320" width="390.1333333333333" height="46" rx="9" fill="#D98324" stroke="none" stroke-width="0"/>
+<rect x="489.1" y="320" width="9" height="46" fill="#D98324"/>
+<line x1="526.0" y1="312" x2="526.0" y2="374" stroke="#C0392B" stroke-width="2" stroke-dasharray="5 4"/>
+<text x="124" y="348" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="start">lean census  ~42 pods</text>
+<text x="536.0" y="306" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#C0392B" text-anchor="start">default cap  3 x 15 = 45</text>
+<text x="930.0" y="348" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#78828E" text-anchor="end">raised  3 x 30 = 90</text>
+<text x="108" y="390" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10.2" font-weight="400" fill="#98A2AE" text-anchor="start">42 of 45 — three pods of headroom. Raise max-pods-per-node to ~30 during the node recycle: it is a scheduling ceiling, so it costs no compute.</text>
+<rect x="110" y="418" width="836" height="54" rx="13" fill="#0F172A" opacity="0.055"/>
+<rect x="108" y="414" width="836" height="54" rx="13" fill="#FFFFFF" stroke="#E1E6EC" stroke-width="1.4"/>
+<rect x="108" y="414" width="5" height="54" rx="2.5" fill="#4F63D2" stroke="none" stroke-width="0"/>
+<text x="130" y="437" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#16202B" text-anchor="start">Why not 24 GB nodes?</text>
+<text x="130" y="456" font-family="'Segoe UI', ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="10.2" font-weight="400" fill="#78828E" text-anchor="start">Even the worst case fits in 42 GiB with ~17 GiB to spare. 24 GB nodes would just be idle, paid-for RAM — and the pod cap, not memory, is what binds first.</text>
+</svg>

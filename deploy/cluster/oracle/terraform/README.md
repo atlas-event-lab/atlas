@@ -7,7 +7,10 @@ OKE requires) plus the cluster and a `3 × E5.Flex (2 OCPU / 16 GB)` worker pool
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.5
-- [OCI CLI](https://docs.oracle.com/en-us/iaas/private-cloud-appliance/pca/installing-the-oci-cli.htm) configured:
+- Get your tenancy_id: 
+- Install [OCI CLI](https://docs.oracle.com/en-us/iaas/private-cloud-appliance/pca/installing-the-oci-cli.htm)
+![alt text](image.png)
+- [OCI CLI](https://docs.oracle.com/en-us/iaas/private-cloud-appliance/pca/using-the-automated-configuration-method.htm) configured:
   `oci setup config` (creates `~/.oci/config` with API-key auth — no secrets in code)
 - An SSH public key (e.g. `~/.ssh/id_rsa.pub`)
 
@@ -20,9 +23,7 @@ OCI assigns to your resources. Here is what each is and how to get it.
 
 Your **tenancy** is the root container of your whole OCI account — you get exactly one when
 you sign up, and it doubles as the *root compartment*. Its OCID identifies your account.
-
-- **Console:** profile icon (top-right) → **Tenancy: `<name>`** → copy **OCID**.
-- **CLI:** it's already in `~/.oci/config` as the `tenancy=` line (written by `oci setup config`).
+You should already have it if followed prerequisites.
 
 ### `compartment_id` — where the cluster is created
 

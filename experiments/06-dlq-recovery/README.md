@@ -64,6 +64,8 @@ retry-exhausted booking that a background process silently completes or that sta
 replay; any double charge on replay; `recoveries_total > 0`; or a malformed message that
 "succeeds" on replay.
 
+![Experiment 06](../../assets/exp06-dlq-ladder.svg)
+
 ## What it does
 
 `runbook.sh` orchestrates the window (mirrors Exp 04/05):

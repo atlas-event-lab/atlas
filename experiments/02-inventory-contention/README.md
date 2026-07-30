@@ -55,6 +55,8 @@ requesting `q` units:
 Falsifiable: if `reservedCount > totalCapacity` ever appears, or winners `≠ floor(C/q)`,
 or a booking neither reserves nor rejects, the hypothesis fails.
 
+![Experiment 02](../../assets/exp02-contention.svg)
+
 ## What it does
 
 Unlike Experiment 01, which **spreads** load across the whole `ROUTES` table so inventory

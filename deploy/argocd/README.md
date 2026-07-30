@@ -32,7 +32,7 @@ terraform init && terraform apply
 ./save-kubeconfig.sh
 export KUBECONFIG=~/.kube/civo-atlas.yaml
 ```
-
+See [Civo cluster](../cluster/civo/terraform/README.md) for more details.
 After the cluster is ready, verify that all nodes are healthy:
 
 ```bash
@@ -354,18 +354,7 @@ real Postgres/Kafka/Keycloak readiness (not just "the object exists").
 
 ## Sync-wave layout
 
-| Wave | Apps | Why here |
-|------|------|----------|
-| **0** | `namespaces`, `node-tuning` | Namespaces + inotify limits — everything else needs them. |
-| **1** | `ingress-nginx`, `metrics-server` | ingress-nginx **provisions the LoadBalancer** (its IP drives Phase B); metrics-server backs the HPAs. |
-| **2** | `cnpg-operator`, `strimzi-operator`, `keycloak-operator`, `kube-prometheus-stack`, `keda-operator` | Operators + their **CRDs** (CRD-before-CR). |
-| **3** | `cnpg-cluster`, `kafka-cluster`, `redis`, `obs-loki`, `obs-tempo`, `obs-alloy` | The stateful CRs — gated on the operators, and held Progressing by custom health until Ready. |
-| **4** | `cnpg-databases`, `kafka-topics`, `obs-config` | Depend on a **Ready** Postgres/Kafka; Grafana datasources + dashboards. |
-| **5** | `keycloak` | Needs `keycloak_db` + `keycloak-db-secret` (wave 4). |
-| **6** | `wiremock` | Fake payment provider; payment depends on it. |
-| **7** | `atlas-services` (**ApplicationSet**) | The 8 services — one Application per `values/<svc>.yaml`. |
-| **8** | `atlas-ingress`, `kafka-ui` | Edge routing + Kafka UI. |
-| **9** | `keda-scaledobjects` | Autoscalers — target the service Deployments + KEDA CRDs. |
+![ArgoCD sync waves](../../assets/sync-waves.svg)
 
 **Shared `syncPolicy`:** `automated{prune, selfHeal}` + `syncOptions: [CreateNamespace=true,
 ServerSideApply=true, ApplyOutOfSyncOnly=true]`. `ServerSideApply` is **required** for the oversized

@@ -44,6 +44,8 @@ The **service code** lives in its own per-service repositories under the
 
 ## Understand the architecture
 
+![Atlas architecture — 8 services around a Kafka event backbone, one PostgreSQL database per service, Keycloak at the edge and an LGTM observability stack, all on Kubernetes](./assets/architecture-overview.svg)
+
 Start with the diagrams in **[`diagrams/`](./diagrams)** — system context, the booking saga
 (happy path _and_ compensation), the service state machines, the payment flow, the CQRS search
 projections, and the Kafka event/topic map:
@@ -73,15 +75,15 @@ Each service is an independent repository with its own CI pipeline; this repo de
 
 | Service | Responsibility | Status |
 |---------|----------------|--------|
-| API Gateway | Single entry point · path routing (nginx / ingress-nginx) | Config-only |
-| User | Profile & preferences | Implemented |
-| Flight | Flight catalog | Implemented |
-| Hotel | Hotel catalog | Implemented |
-| Inventory | Seat/room availability & reservation locks (no-oversell) | Implemented |
-| Travel Cart | Pre-booking selection (1 flight + 1 hotel), TTL | Implemented |
-| Booking | Booking lifecycle · saga choreography | Implemented |
-| Payment | Payment lifecycle · crash-safe, idempotent charging | Implemented |
-| Search | Flight & hotel search read models (CQRS) | Implemented |
+| [API Gateway](./gateway/nginx/nginx.conf) | Single entry point · path routing (nginx / ingress-nginx) | Config-only |
+| [User](https://github.com/atlas-event-lab/atlas-user-service) | Profile & preferences | Implemented |
+| [Flight](https://github.com/atlas-event-lab/atlas-flight-service) | Flight catalog | Implemented |
+| [Hotel](https://github.com/atlas-event-lab/atlas-hotel-service) | Hotel catalog | Implemented |
+| [Inventory](https://github.com/atlas-event-lab/atlas-inventory-service) | Seat/room availability & reservation locks (no-oversell) | Implemented |
+| [Travel Cart](https://github.com/atlas-event-lab/atlas-travel-cart-service) | Pre-booking selection (1 flight + 1 hotel), TTL | Implemented |
+| [Booking](https://github.com/atlas-event-lab/atlas-booking-service) | Booking lifecycle · saga choreography | Implemented |
+| [Payment](https://github.com/atlas-event-lab/atlas-payment-service) | Payment lifecycle · crash-safe, idempotent charging | Implemented |
+| [Search](https://github.com/atlas-event-lab/atlas-search-service) | Flight & hotel search read models (CQRS) | Implemented |
 | Notification | Email notifications | Planned |
 
 ---
@@ -98,43 +100,27 @@ spin it up quickly and spend your time on the experiments instead of on plumbing
 fast path to building real intuition for **Kafka, Event-Driven Architecture, distributed systems,
 observability, and microservices**.
 
-1. **Skim the [diagrams](./diagrams)** — context, the saga, the state machines. ~10 min.
-2. **Bring up the whole stack on a cluster.** Two ways, same manifests:
+1. **Read the architecture** — start with the [diagrams](./diagrams) — to understand the system
+   context, the booking saga, and the service state machines (~15 min)
+2. **Deploy the platform.** choose one of two paths:
    - **Manual runbook** — the ~30 ordered `kubectl`/`helm` commands, to understand what each
-     piece does: **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)** (Oracle OKE or Civo on
-     trial credits, with a per-vendor porting table).
-   - **GitOps (recommended)** — `terraform apply` for a trial-credit cluster, then **one**
+     piece does: **[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)**.
+   - **GitOps (recommended)** — `terraform apply` then **one**
      `bootstrap.sh`, and Argo CD converges the entire stack wave by wave:
      **[`deploy/argocd/README.md`](./deploy/argocd/README.md)**.
-   
+3. **Open the dashboards** — make your first booking, then follow it through Grafana, Tempo and
+   Kafka UI.
+4. **Run the experiments** - load-test, replay duplicate events, kill consumers, trigger saga
+   compensation, and observe the results live:
+   [`experiments/`](./experiments)
 
-   > **What it costs — and the free credits.** The stack runs on a **12 vCPU / 48 GB** cluster.
-   > It's built for the free-trial credits of **Oracle Cloud (OKE)** and **Civo** — less
-   > mainstream than AWS/GCP, but their trials hand you **enough** resources for the whole stack,
-   > and both are where these experiments were actually run. Rough compute at 24/7:
-   > **Civo ≈ $0.36/h (~$261/mo)** — the ~$250 trial buys **~700 cluster-hours**, plenty for
-   > part-time use; **Oracle ≈ $0.22/h (~$155/mo)**, and only **~$17/mo** if you run it ~4 h/day.
-   > The real cost lever is **destroying the cluster when idle** (step 6). Full model:
-   > [`deploy/ops/README.md`](./deploy/ops/README.md) and
-   > [`deploy/cluster/civo/terraform/README.md`](./deploy/cluster/civo/terraform/README.md).
-3. **Make your first booking and open the dashboards** — Grafana (RED metrics, Kafka, traces
-   threaded across the saga) and the Kafka UI. Each guide's **"See it work"** section walks you
-   through it.
-4. **Run the experiments** → **[`experiments/`](./experiments)**: load-test it (Exp 01), replay
-   duplicates (Exp 03), kill a consumer mid-saga (Exp 04) — and watch it scale, heal, and never
-   oversell or double-charge, **live in Grafana**.
-5. **Read the [ADRs](./docs/adr)** to see _why_ each decision was made.
-6. **Tear it down when you're done — so an idle cluster doesn't keep billing you.** A cloud
-   charges for worker nodes while they are **running**, regardless of load, so destroy the
-   cluster (or scale it to zero) the moment you finish experimenting:
+5. **Read the [ADRs](./docs/adr) (Optional)** - understand the reasoning behind every architectural decision.
+6. **Destroy the cluster when you're done** — cloud providers charge while worker nodes are
+   running. Tear the cluster down to avoid unnecessary costs:
    - **Civo:** `./deploy/ops/civo/cluster.sh down` or `terraform destroy` — the cluster is
-     gone and billing drops to **$0**. It cleans up the orphaned block volumes for you (the raw
-     `terraform destroy` gotcha is [TS-CIVO-03](./deploy/TROUBLESHOOTING.md#ts-civo-03--civo-terraform-destroy-fails-databasenetworkinusebyvolumes)).
-   - **Oracle OKE:** `./deploy/ops/oracle/cluster-down.sh` — scales the node pool to **0** so the
-     workers terminate; PVC data persists for the next `up`.
+     gone and billing drops to **$0**.
+   - **Oracle OKE:** `./deploy/cluster/oracle/terraform terraform destroy` — destroys the cluster.
 
-   The two on/off levers, what still bills while down, and the full cost model are in
-   **[`deploy/ops/README.md`](./deploy/ops/README.md)**.
 
 > **Just want to poke the API by hand, without a cluster?** There's a local Docker-Compose
 > walkthrough in [`deploy-local/LOCAL-DEPLOYMENT.md`](./deploy-local/LOCAL-DEPLOYMENT.md).
@@ -143,6 +129,52 @@ observability, and microservices**.
 Stuck on a deploy? Known issues and fixes live in
 **[`deploy/TROUBLESHOOTING.md`](./deploy/TROUBLESHOOTING.md)**.
 
+---
+
+## Cloud requirements and costs
+
+Atlas is designed to run on a **12 vCPU / 48 GB** Kubernetes cluster. That size is intentional:
+it is large enough to demonstrate autoscaling, Kafka, observability, and distributed-system
+behavior under load.
+
+The recommended providers are **Oracle Cloud (OKE)** and **Civo** because their trial credits are
+large enough to run the complete platform.
+
+
+
+| Provider | 24×7 | ~4 h/day | Cluster destroyed | Trial credits |
+|-----------|-----:|---------:|------------------:|--------------:|
+| Oracle OKE (Enhanced) | **$286.12/month** | ~$110/month | $0 | ~$300 — about one month at 24×7 |
+| Civo | **$261/month** | ~$43/month | $0 | ~$250 — about 700 cluster-hours |
+
+The exact cost depends on the provider, cluster configuration, and how long the infrastructure remains provisioned. For Atlas, the most important cost-saving measure is to destroy the cluster when you are done experimenting.
+
+#### Oracle OKE cost breakdown
+
+| Line item | $/month | Scales with node-hours? |
+|-----------|--------:|-------------------------|
+| Node pool — cluster type **Enhanced** | 74.40 | **No — bills while the cluster exists, even at 0 nodes** |
+| Compute `VM.Standard.E5.Flex` 2 OCPU / 16 GB × 3 | 205.34 | Yes |
+| Block storage 50 GB × 3 (boot volumes) | 6.38 | Yes |
+| **Total** | **286.12** | |
+
+The Enhanced cluster fee is a fixed baseline cost. Scaling the node pool down to zero removes the compute and boot-volume costs, but the `$74.40`/month cluster fee continues while the cluster exists. This means that scaling the node pool to zero reduces the cost substantially, but terraform destroy is required to bring the infrastructure cost down to `$0.
+
+> **Note**: A Basic OKE cluster has a free control plane and does not have > this same fixed cluster fee. Make sure you know which OKE cluster type you provisioned.
+
+#### Civo
+
+Civo's control plane is free, so once the cluster and its resources are destroyed, the infrastructure cost reaches $0.
+The simplest cost strategy
+
+Atlas does not need to run 24×7. A practical workflow is:
+**Provision** → **run experiments** → **inspect Grafana/Kafka** → **destroy the cluster**.
+Atlas includes helper scripts for both providers to make teardown a one-command operation.
+
+See:
+
+- `deploy/ops/README.md`
+- `deploy/cluster/civo/terraform/README.md`
 ---
 
 ## How it's built

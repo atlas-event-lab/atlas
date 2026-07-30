@@ -10,7 +10,7 @@ One folder per cloud (mirrors `deploy/cluster/<cloud>/`), plus a cloud-agnostic 
 
 | Path | Cloud | What it does | Saves credits? |
 |------|-------|--------------|----------------|
-| [`oracle/cluster-down.sh`](./oracle/cluster-down.sh) / [`cluster-up.sh`](./oracle/cluster-up.sh) | **Oracle** (`oci`) | Scale the OKE node pool to **0** / back up | **Yes** — workers terminate |
+| [`oracle/cluster-down.sh`](./oracle/cluster-down.sh) / [`cluster-up.sh`](./oracle/cluster-up.sh) | **Oracle** (`oci`) | Scale the OKE node pool to **0** / back up | **Partly** — $286 → $74.40/mo; the Enhanced cluster fee stays |
 | [`civo/cluster.sh`](./civo/cluster.sh) `up`/`down` | **Civo** (`terraform`) | Create / destroy the cluster (no "stop" on Civo) | **Yes** — $0 while down |
 | [`apps/idle.sh`](./apps/idle.sh) / [`apps/resume.sh`](./apps/resume.sh) | **Any** (`kubectl`/`helm`) | Scale business apps to 0 / restore, keeping the platform up | **No** — nodes stay on |
 
@@ -20,9 +20,14 @@ Two separate levers — don't confuse them:
 
 - **On/off cluster** (Oracle `oracle/cluster-*.sh` · Civo `civo/cluster.sh up/down`) is
   the **real credit-saver**: a cloud bills worker nodes for being **RUNNING**, not for how
-  many pods they hold. To save money you must terminate/deallocate the workers.
+  many pods they hold. To save money you must terminate/deallocate the workers. On Oracle
+  this only *suspends* (state + data survive) and it does **not** reach $0 — an Enhanced
+  cluster keeps billing $74.40/mo at 0 nodes. To wipe the cluster entirely see
+  [Full teardown](#full-teardown--destroy-everything-terraform-destroy) below.
 - **App right-sizing** (`apps/idle.sh`) frees memory but keeps nodes powered on, so it saves
   **nothing** — use it when you want the platform (Grafana/Kafka/Keycloak) up with no app load.
+
+![Two levers - only one of them saves money](../../assets/cost-levers.svg)
 
 ## On/off — Oracle (OKE)
 
@@ -34,19 +39,77 @@ export NODEPOOL_OCID="ocid1.nodepool.oc1..."   # your pool (or set it in config.
 ./cluster-up.sh 4   # or bring it up at a different size
 ```
 
-Rough compute cost, 3 × (2 OCPU / 16 GB) ≈ **$0.22/h ≈ ~$155/mo at 24/7**. Running only
-~4 h/day on weekdays (~80 h/mo) drops it to **~$17/mo**.
+Cost of the reference cluster, from the official Oracle Cost Estimator — note that only two
+of the three line items respond to `cluster-down.sh`:
+
+| Line item | $/mo | Scales with node-hours? |
+|-----------|-----:|-------------------------|
+| Node pool — cluster type **Enhanced** | 74.40 | **No** |
+| Compute 3 × `VM.Standard.E5.Flex` 2 OCPU / 16 GB | 205.34 | Yes |
+| Block storage 50 GB × 3 (boot volumes) | 6.38 | Yes |
+| **Total 24×7** | **286.12** | |
+
+So: **$286/mo** at 24×7, **~$110/mo** at 4 h/day, **~$98/mo** at ~4 h on weekdays only
+(~80 h/mo) — and **$74.40/mo** with the pool scaled to 0, because the Enhanced cluster fee
+does not stop. See [Full teardown](#full-teardown--destroy-everything-terraform-destroy) to
+reach $0.
 
 **What persists across down/up:** all PVC data (Postgres/Kafka/Keycloak) on OCI Block
-Volumes reattaches automatically. **Still billed while down** (small): the LoadBalancer
-and the block volumes themselves.
+Volumes reattaches automatically. **Still billed while down:** the Enhanced cluster fee
+($74.40/mo), plus the LoadBalancer and the PVC block volumes (small).
 
 **Do NOT delete the LoadBalancer.** The Keycloak issuer is pinned to its IP
 (`<cluster-ip>` via nip.io); a new IP breaks the `iss` all 8 services validate. Ideally
 attach a **Reserved Public IP** to the LB so the address is stable across recreations.
 
-**Check the cluster type:** an *Enhanced* OKE cluster bills ~$0.10/h for the control plane
-even at 0 nodes (~$73/mo); a *Basic* cluster's control plane is free. Worth confirming.
+**Check the cluster type.** This is the single most expensive thing to get wrong: an
+*Enhanced* OKE cluster bills **$74.40/mo** ($0.102/h) even at 0 nodes, so `cluster-down.sh`
+floors you there instead of at $0. A *Basic* cluster's control plane is free and has no such
+floor. The reference cluster in this repo is Enhanced — if you don't need Enhanced-only
+features, a Basic cluster removes the floor entirely.
+
+### Full teardown — destroy everything (`terraform destroy`)
+
+`cluster-down.sh` only **suspends** compute. The control plane, all Kubernetes state
+(namespaces, Argo apps, secrets, CRs) and the PVC block volumes survive — and an Enhanced
+control plane keeps billing at 0 nodes. To go to **$0 and a clean slate** — e.g. to re-run
+[`deploy/argocd/bootstrap.sh`](../argocd/bootstrap.sh) from scratch — tear the whole cluster
+down with Terraform, where it was provisioned:
+
+```bash
+cd ../cluster/oracle/terraform
+terraform destroy      # removes cluster, node pool, VCN, gateways, NSGs — everything Terraform made
+```
+
+**Before destroying, release the ingress LoadBalancer.** It is created by the in-cluster OCI
+provider (not Terraform), lives inside a Terraform-managed subnet, and blocks that subnet's
+deletion — `destroy` then fails with:
+
+```
+409-Conflict … Subnet … references the service VNIC … You must remove the reference
+```
+
+Delete it while the cluster is still reachable, then destroy:
+
+```bash
+kubectl delete svc -A --field-selector spec.type=LoadBalancer --wait=false   # releases the OCI LB(s)
+# wait ~1-2 min for OCI to actually delete the LB, then:
+cd ../cluster/oracle/terraform && terraform destroy
+```
+
+If `destroy` still errors on the subnet "in use", an orphaned LB remains — delete it in the
+Console (**Networking → Load Balancers**; check both the *Load Balancer* and *Network Load
+Balancer* tabs) or with `oci lb load-balancer delete --force` / `oci nlb
+network-load-balancer delete --force`, then re-run `terraform destroy`.
+
+> **Block volumes** from PVCs are not in the VCN, so they don't block the destroy — but they
+> linger as *Available* in Block Storage and keep a small charge. Delete leftovers there (or
+> `kubectl delete pvc -A --all` before the destroy) if you want a true $0.
+
+**Recreate is from zero:** `terraform apply` → re-fetch the kubeconfig
+(`oci ce cluster create-kubeconfig …`, see [`deploy/cluster/oracle/terraform/README.md`](../cluster/oracle/terraform/README.md))
+→ run `bootstrap.sh` again. No PVC data carries over — contrast with `cluster-down.sh` /
+`cluster-up.sh`, which keep everything.
 
 ## On/off — Civo
 
@@ -79,9 +142,9 @@ Lean baseline so the stack fits at idle; HPA scales up under load/experiments:
 
 - **booking / inventory / payment:** HPA `minReplicas: 1` (was 2), `maxReplicas: 4`,
   anti-affinity kept for when it scales past 1. Raise min to 2 during HA/Saga experiments.
-- **search:** already `min 1 / max 3`.
-- **user / flight / hotel / travel-cart:** `replicaCount: 1`, no HPA.
-- **Kafka:** 1 broker baseline; 3 brokers only for replication/DLQ experiments.
+- **search / travel-cart:** already `min 1 / max 3`.
+- **user / flight / hotel:** `replicaCount: 1`, no HPA.
+- **Kafka:** 3 brokers.
 - **CNPG:** primary only in dev; add a replica for failover experiments.
 
 Apply after editing values (or let CI/CD do it):

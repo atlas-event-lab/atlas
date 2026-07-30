@@ -40,6 +40,8 @@ Falsifiable: a booking stuck in `INVENTORY_RESERVED`, a payment left `PROCESSING
 read-model sums that do not return to baseline, any `recoveries_total` > 0, or a failed
 post-restore smoke.
 
+![Experiment 05](../../assets/exp05-compensation.svg)
+
 ## What it does
 
 `runbook.sh` orchestrates the window:

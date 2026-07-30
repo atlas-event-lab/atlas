@@ -339,4 +339,33 @@ if [[ "$REALM_READY" == true && "$LOADTEST_USERS" != "0" ]]; then
   fi
 fi
 
+# 15. Experiment credentials (verification only). The three values a load test needs —
+# KEYCLOAK_CLIENT_SECRET (atlas-loadtest client), LOADTEST_USER_PASSWORD (secret/atlas-realm-
+# credentials) and KEYCLOAK_ADMIN_PASSWORD (secret/keycloak-initial-admin) — already exist after
+# the steps above; experiments read them with experiments/scripts/cluster-credentials.sh (see
+# experiments/README.md § "Auth for load tests"). Here we just RUN that fetcher once to confirm
+# all three resolve, and tell the operator how to load them. Non-fatal and side-effect-free: it
+# only reads. Gated on REALM_READY (the atlas-loadtest client comes from the realm import). We
+# capture the output instead of dumping it so the secret values are not echoed into the log.
+if [[ "$REALM_READY" == true ]]; then
+  log "Verifying experiment credentials (KEYCLOAK_CLIENT_SECRET / LOADTEST_USER_PASSWORD / KEYCLOAK_ADMIN_PASSWORD)"
+  if CREDS_OUT="$(KEYCLOAK_URL="http://keycloak.$LB.nip.io" LB="$LB" \
+       bash "$REPO_ROOT/experiments/scripts/cluster-credentials.sh" 2>/dev/null)" \
+     && grep -q '^export KEYCLOAK_CLIENT_SECRET=' <<<"$CREDS_OUT" \
+     && grep -q '^export LOADTEST_USER_PASSWORD=' <<<"$CREDS_OUT" \
+     && grep -q '^export KEYCLOAK_ADMIN_PASSWORD=' <<<"$CREDS_OUT"; then
+    ok "Experiment credentials generated and fetchable (all three resolve)."
+    printf '    Load them into a shell for a load test:\n'
+    printf '      eval "$(LB=%s ./experiments/scripts/cluster-credentials.sh)"\n' "$LB"
+  else
+    warn "Could not auto-verify experiment credentials (Keycloak may still be settling — non-fatal)."
+    warn "Fetch them when you run a load test (idempotent, reads live from the cluster):"
+    warn "  eval \"\$(LB=$LB ./experiments/scripts/cluster-credentials.sh)\""
+    warn "Or read each value directly:"
+    warn "  kubectl -n atlas-system get secret atlas-realm-credentials -o jsonpath='{.data.loadtest-password}' | base64 -d   # LOADTEST_USER_PASSWORD"
+    warn "  kubectl -n atlas-system get secret keycloak-initial-admin  -o jsonpath='{.data.password}' | base64 -d           # KEYCLOAK_ADMIN_PASSWORD"
+    warn "  # KEYCLOAK_CLIENT_SECRET: Keycloak Admin UI -> realm atlas -> Clients -> atlas-loadtest -> Credentials"
+  fi
+fi
+
 ok "Bootstrap complete."

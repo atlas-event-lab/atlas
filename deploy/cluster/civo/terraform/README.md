@@ -10,7 +10,7 @@ full size — a single fixed pool. Civo's control plane is free and clusters are
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.5
 - A Civo account and an API key — create one in the Dashboard (Account → Security → API
-  keys), shown below.
+  keys), see image below.
 - (optional) the [Civo CLI](https://www.civo.com/docs/overview/civo-cli) for `status`
 
 ![Civo Dashboard — Account → Security → API keys](image.png)

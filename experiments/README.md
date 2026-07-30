@@ -36,6 +36,8 @@ Grouped by what they prove. Ordered roughly by dependency — scalability first 
 the harness and the baseline), then the resilience / correctness probes that compare
 against that baseline.
 
+![Experiments roadmap](../assets/experiments-map.svg)
+
 | # | Experiment | Category | Hypothesis — what it proves |
 |---|------------|----------|-----------------------------|
 | 01 | [High Booking Concurrency](./01-high-booking-concurrency) | Scalability | HPA scales the hot path; the pooler keeps DB connections bounded; degradation is graceful, not a cliff |
@@ -115,6 +117,12 @@ LOADTEST_USER_COUNT=200 ./scripts/seed-loadtest-users.sh
 
 Run it without `eval` first if you want to see what it would set — it prints to stdout, so
 nothing is exported until you ask for it.
+
+> `deploy/argocd/bootstrap.sh` already runs this fetcher once at the end and confirms all
+> three values resolve (a `✔ Experiment credentials generated and fetchable` line); if it
+> can't, it prints the exact commands to get them. You still `eval` the script here to load
+> them into *your* shell before a load test — bootstrap only verifies, it can't export into
+> a shell it doesn't own.
 
 The script is **idempotent** — re-run it anytime, and raise `LOADTEST_USER_COUNT` to grow
 the pool (existing users are kept). The users are **reused across all experiments**; you
