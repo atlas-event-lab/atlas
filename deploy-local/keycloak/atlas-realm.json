@@ -1,0 +1,84 @@
+{
+  "realm": "atlas",
+  "enabled": true,
+  "sslRequired": "NONE",
+  "registrationAllowed": false,
+
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Catalog administration and reconciliation endpoints."
+      }
+    ]
+  },
+
+  "clients": [
+    {
+      "clientId": "atlas-web",
+      "name": "Atlas web / local client",
+      "description": "Public client used by the Atlas local environment and smoke tests.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    },
+    {
+      "clientId": "atlas-loadtest",
+      "name": "Atlas load-test client",
+      "description": "Client used by the local k6 experiments.",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": false
+    }
+  ],
+
+  "users": [
+    {
+      "username": "atlas-user",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "atlas-user@example.invalid",
+      "firstName": "Atlas",
+      "lastName": "User",
+      "realmRoles": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${ATLAS_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "atlas-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "atlas-admin@example.invalid",
+      "firstName": "Atlas",
+      "lastName": "Admin",
+      "realmRoles": [
+        "ADMIN"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${ATLAS_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
+
