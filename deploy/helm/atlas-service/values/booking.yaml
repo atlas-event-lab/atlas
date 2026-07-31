@@ -4,10 +4,6 @@
 image:
   repository: ghcr.io/atlas-event-lab/atlas-booking-service
   tag: "sha-4eec6f6772bacef2a04676e5fc6cd4094b0f3d6f" # set by CI to the git-sha / release tag
-# booking-service does three jobs in one pod, which is why its ceiling is the highest of the
-# CPU-scaled services: it serves the synchronous REST hot path, PRODUCES to the outbox relay, and
-# CONSUMES the Saga topics (inventory.*, payment.*). The HPA only sees aggregate CPU, so REST
-# latency and consumer throughput compete for the same budget inside each pod.
 autoscaling:
   enabled: true
   minReplicas: 2
@@ -17,7 +13,8 @@ podAntiAffinity:
   enabled: true
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
-  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/booking_db
+  DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/booking_db?prepareThreshold=0
+  FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/booking_db
   FLIGHT_SERVICE_URL: http://flight-service:8080
   HOTEL_SERVICE_URL: http://hotel-service:8080
   REDIS_HOST: redis.atlas-data

@@ -5,7 +5,8 @@ image:
   repository: ghcr.io/atlas-event-lab/atlas-user-service
   tag: "sha-75b3ccd900062492bf7275b81297fbc93133f19d"
 config:
-  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/user_db
+  DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/user_db?prepareThreshold=0
+  FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/user_db
 envSecret:
   enabled: true
   name: user-secret # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)

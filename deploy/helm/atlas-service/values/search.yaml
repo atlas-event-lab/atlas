@@ -13,7 +13,8 @@ podAntiAffinity:
   enabled: false
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
-  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/search_db
+  DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/search_db?prepareThreshold=0
+  FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/search_db
 envSecret:
   enabled: true
   name: search-secret # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)

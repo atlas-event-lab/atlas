@@ -29,7 +29,8 @@ podAntiAffinity:
   enabled: true
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
-  DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/payment_db
+  DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/payment_db?prepareThreshold=0
+  FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/payment_db
   PAYMENT_PROVIDER_URL: http://wiremock.atlas-apps:8080
   # ADR-0015: 4 pods (KEDA max) x concurrency 3 = 12 consumers = 12 partitions of inventory.reserved.
   KAFKA_CONCURRENCY: "3"
