@@ -28,7 +28,7 @@ See [Oracle-cluster](../cluster/oracle/terraform/README.md) for more details
 ```bash
 cd deploy/cluster/civo/terraform      # from repo root
 export CIVO_TOKEN="your-civo-api-key" #go to your civo Dashboard (Account → Security → API keys)
-terraform init && terraform apply
+terraform init && terraform apply.    # ~ 5 min
 ./save-kubeconfig.sh
 export KUBECONFIG=~/.kube/civo-atlas.yaml
 ```
@@ -44,7 +44,7 @@ All the steps below are vendor-agnostic:
 ```
 # 2. Bootstrap (from the repo root). Vendor-agnostic — runs against whatever cluster your kubectl points at. No arguments needed.
 # from repo root
-./deploy/argocd/bootstrap.sh  
+./deploy/argocd/bootstrap.sh     # ~ 35 min
 
 # 3. Open the Argo CD UI from the printed URL card and watch it go green.
 #    While it converges, open Grafana, Kafka UI and a DB session — see

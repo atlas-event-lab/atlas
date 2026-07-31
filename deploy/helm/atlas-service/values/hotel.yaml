@@ -9,6 +9,8 @@ config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/hotel_db?prepareThreshold=0
   FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/hotel_db
+  SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+  SPRING_FLYWAY_BASELINE_VERSION: "0"
   INVENTORY_SERVICE_URL: http://inventory-service:8080
 envSecret:
   enabled: true

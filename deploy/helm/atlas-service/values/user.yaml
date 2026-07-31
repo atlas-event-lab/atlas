@@ -7,6 +7,8 @@ image:
 config:
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/user_db?prepareThreshold=0
   FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/user_db
+  SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+  SPRING_FLYWAY_BASELINE_VERSION: "0"
 
 envSecret:
   enabled: true

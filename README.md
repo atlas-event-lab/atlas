@@ -137,7 +137,7 @@ Atlas is designed to run on a **12 vCPU / 48 GB** Kubernetes cluster. That size 
 it is large enough to demonstrate autoscaling, Kafka, observability, and distributed-system
 behavior under load.
 
-The recommended providers are **Oracle Cloud (OKE)** and **Civo** because their trial credits are
+The recommended providers are **[Oracle Cloud](https://www.oracle.com/cloud/free/)** and **[Civo](https://www.civo.com/)** because their trial credits are
 large enough to run the complete platform.
 
 
