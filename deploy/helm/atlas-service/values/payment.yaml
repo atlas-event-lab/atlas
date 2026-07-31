@@ -6,8 +6,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-payment-service
-  tag: ""
-
+  tag: "sha-826f52fd506eaf7903fd47e4b22fda6574150ae5"
 # Scaled by KEDA, not by CPU. payment-service is I/O-bound (provider HTTP + JDBC), so CPU
 # utilisation barely moves while the `inventory.reserved` consumer lag grows — the CPU HPA
 # under-scales it exactly when it matters. The KEDA Kafka scaler reads that lag from the
@@ -26,21 +25,17 @@ autoscaling:
   enabled: false
 keda:
   enabled: true
-
 podAntiAffinity:
   enabled: true
-
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
   DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/payment_db
   PAYMENT_PROVIDER_URL: http://wiremock.atlas-apps:8080
   # ADR-0015: 4 pods (KEDA max) x concurrency 3 = 12 consumers = 12 partitions of inventory.reserved.
   KAFKA_CONCURRENCY: "3"
-
 envSecret:
   enabled: true
-  name: payment-secret            # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
-
+  name: payment-secret # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
 # Public Keycloak issuer (the `iss` browser-login JWTs carry; validated by this service).
 # Injected from the `atlas-issuer` Secret so the public host/IP is NOT committed. The Secret
 # is a per-cluster prerequisite — see DEPLOYMENT-RUNBOOK.md § "App secret — atlas-issuer".
