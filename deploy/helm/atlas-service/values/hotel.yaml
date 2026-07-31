@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-hotel-service
-  tag: "sha-932e5e329959f730dacd213126eb600010805e82"
+  tag: "sha-c87fcadd808b8a58ca5a48b7b14a9b54f6d70420"
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/hotel_db?prepareThreshold=0
