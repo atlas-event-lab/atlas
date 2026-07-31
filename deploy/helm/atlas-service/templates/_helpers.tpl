@@ -37,7 +37,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
-{{/* Image reference (tag falls back to AppVersion). */}}
+{{/* Image reference. image.tag is REQUIRED — the service CI write-back pins it to sha-<commit>
+     (GitOps CD). No silent fallback to .Chart.AppVersion (":latest"): a missing tag SHALL fail
+     render loudly rather than deploy a moving tag. */}}
 {{- define "atlas-service.image" -}}
-{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- $tag := .Values.image.tag | required "image.tag is required — the service CI write-back pins it to sha-<commit>. Refusing to default to :latest." -}}
+{{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}

@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-user-service
-  tag: ""
+  tag: "latest"                # bootstrap only — the service CI write-back overwrites with sha-<commit>
 
 config:
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/user_db?prepareThreshold=0

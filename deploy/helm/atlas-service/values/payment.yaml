@@ -6,7 +6,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-payment-service
-  tag: ""
+  tag: "latest"                # bootstrap only — the service CI write-back overwrites with sha-<commit>
 
 # Scaled by KEDA, not by CPU. payment-service is I/O-bound (provider HTTP + JDBC), so CPU
 # utilisation barely moves while the `inventory.reserved` consumer lag grows — the CPU HPA

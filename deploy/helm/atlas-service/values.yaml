@@ -10,9 +10,11 @@ fullnameOverride: ""
 image:
   # Override per service, e.g. ghcr.io/<org>/atlas-booking-service
   repository: ghcr.io/atlas-event-lab/atlas-service
-  tag: ""                     # empty -> .Chart.AppVersion (":latest" by default)
-  pullPolicy: Always          # ":latest" moves; Always keeps pods on the newest main build.
-                              # Pin image.tag to a fixed tag + set IfNotPresent for reproducibility.
+  tag: ""                     # REQUIRED at the per-service values level: the service CI write-back
+                              # pins it to sha-<commit>. Empty here fails render on purpose (the
+                              # image helper uses `required`) — no silent fallback to :latest.
+  pullPolicy: Always          # Suits the `latest` bootstrap tag. Once every service carries an
+                              # immutable sha tag, flip to IfNotPresent (tags never move -> no re-pull).
 imagePullSecrets: []           # e.g. [{ name: ghcr-pull }]
 
 replicaCount: 1
