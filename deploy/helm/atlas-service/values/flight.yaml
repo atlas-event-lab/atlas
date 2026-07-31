@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-flight-service
-  tag: "sha-2e56e22341f2072f2117de30849ad2bfcf0cf4a8"
+  tag: "sha-086a496bf76ee1efdd9afd9fe29b21010c2d445a"
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/flight_db?prepareThreshold=0
