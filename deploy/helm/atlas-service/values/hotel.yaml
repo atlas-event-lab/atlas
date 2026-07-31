@@ -3,17 +3,14 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-hotel-service
-  tag: ""
-
+  tag: "sha-87998f7b4e0adc48addbc6c03e18c7d00056e5fc"
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
   DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/hotel_db
   INVENTORY_SERVICE_URL: http://inventory-service:8080
-
 envSecret:
   enabled: true
-  name: hotel-secret              # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
-
+  name: hotel-secret # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
 # Public Keycloak issuer (the `iss` browser-login JWTs carry; validated by this service).
 # Injected from the `atlas-issuer` Secret so the public host/IP is NOT committed. The Secret
 # is a per-cluster prerequisite — see DEPLOYMENT-RUNBOOK.md § "App secret — atlas-issuer".
