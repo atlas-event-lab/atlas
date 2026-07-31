@@ -3,17 +3,14 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-search-service
-  tag: "latest"                # bootstrap only — the service CI write-back overwrites with sha-<commit>
-
+  tag: "sha-367d6365cb73a8ba23367871d702cf49b42f034c"
 autoscaling:
   enabled: true
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 70
-
 podAntiAffinity:
   enabled: false
-
 config:
   KAFKA_BOOTSTRAP_SERVERS: atlas-kafka-bootstrap.atlas-data:9092
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/search_db?prepareThreshold=0
@@ -21,8 +18,7 @@ config:
 
 envSecret:
   enabled: true
-  name: search-secret           # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
-
+  name: search-secret # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
 # Public Keycloak issuer (the `iss` browser-login JWTs carry; validated by this service).
 # Injected from the `atlas-issuer` Secret so the public host/IP is NOT committed. The Secret
 # is a per-cluster prerequisite — see DEPLOYMENT-RUNBOOK.md § "App secret — atlas-issuer".

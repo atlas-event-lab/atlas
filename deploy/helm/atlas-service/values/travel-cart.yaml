@@ -4,28 +4,24 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-travel-cart-service
-  tag: "latest"                # bootstrap only — the service CI write-back overwrites with sha-<commit>
+  tag: "sha-7975e6e0ad04b895ffb38402273f9b8594025da4"
 
 autoscaling:
   enabled: true
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 70
-
 # Spread the replicas across nodes — pointless at 1 pod, meaningful now that it can reach 3.
 podAntiAffinity:
   enabled: true
-
 config:
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/travel_cart_db?prepareThreshold=0
   FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/travel_cart_db
   REDIS_HOST: redis.atlas-data
   REDIS_PORT: "6379"
-
 envSecret:
   enabled: true
-  name: travel-cart-secret        # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
-
+  name: travel-cart-secret # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
 extraEnv:
   - name: KEYCLOAK_ISSUER_URI
     valueFrom:
