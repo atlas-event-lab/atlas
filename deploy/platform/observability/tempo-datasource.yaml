@@ -18,7 +18,7 @@ data:
         type: tempo
         uid: tempo
         access: proxy
-        url: http://tempo.atlas-observability:3200
+        url: http://tempo.atlas-observability:3100
         jsonData:
           tracesToLogsV2:
             datasourceUid: loki

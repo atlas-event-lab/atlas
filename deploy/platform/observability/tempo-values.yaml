@@ -2,7 +2,7 @@
 # Install:
 #   helm upgrade --install tempo grafana/tempo -n atlas-observability -f tempo-values.yaml
 #
-# Produces Service `tempo` with: 3200 (query/API), 4317 (OTLP gRPC), 4318 (OTLP HTTP).
+# Produces Service `tempo` with: 3100 (query/API), 4317 (OTLP gRPC), 4318 (OTLP HTTP).
 # Apps push traces to http://tempo.atlas-observability:4318/v1/traces (set in each app's
 # management.otlp.tracing.endpoint). Version-sensitive chart — verify svc/ports after install.
 tempo:
