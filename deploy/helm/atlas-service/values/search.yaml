@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-search-service
-  tag: "sha-367d6365cb73a8ba23367871d702cf49b42f034c"
+  tag: "sha-1cbb5bc5389a46844bcf620b2a5f44f02a7adf14"
 autoscaling:
   enabled: true
   minReplicas: 1
@@ -17,7 +17,6 @@ config:
   FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/search_db
   SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
   SPRING_FLYWAY_BASELINE_VERSION: "0"
-
 envSecret:
   enabled: true
   name: search-secret # keys: DB_USERNAME, DB_PASSWORD (SealedSecret)
