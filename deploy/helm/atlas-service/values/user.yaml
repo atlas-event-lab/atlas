@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-user-service
-  tag: "sha-47b5a63633b247ad8a894e58d9e057de21832049"
+  tag: "sha-aba2f6ebf0a2e98e8fb421fccb8f078d5e2db7a3"
 config:
   DB_URL: jdbc:postgresql://atlas-pg-pooler-rw.atlas-data:5432/user_db?prepareThreshold=0
   FLYWAY_DB_URL: jdbc:postgresql://atlas-pg-rw.atlas-data:5432/user_db
