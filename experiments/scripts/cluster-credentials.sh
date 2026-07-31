@@ -62,11 +62,11 @@ ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-$(kubectl -n "$NS_SYSTEM" get secret 
 # Never pipe curl straight into jq: a non-JSON body (an nginx 404/503 HTML page is the
 # common one) surfaces as an opaque `jq: parse error` instead of the real problem. Capture
 # the status and the body, judge the status first.
-raw=$(curl -sS -w $'\n%{http_code}' \
+raw=$(curl -sS --connect-timeout 5 --max-time 15 -w $'\n%{http_code}' \
   "$KEYCLOAK_URL/realms/$ADMIN_REALM/protocol/openid-connect/token" \
   -d grant_type=password -d "client_id=$ADMIN_CLIENT" \
   --data-urlencode "username=$ADMIN_USER" --data-urlencode "password=$ADMIN_PASSWORD") \
-  || die "could not reach $KEYCLOAK_URL — is the Keycloak Ingress up? (Runbook Step 5)"
+  || die "could not reach $KEYCLOAK_URL in time — is the Keycloak Ingress up and the host resolvable? On Civo, keycloak.<lb-hostname>.nip.io does not resolve; use a resolved-IP URL or a port-forward. (Runbook Step 5)"
 code="${raw##*$'\n'}"; body="${raw%$'\n'*}"
 
 case "$code" in

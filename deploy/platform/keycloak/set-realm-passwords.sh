@@ -64,7 +64,10 @@ http_post() {  # http_post URL [curl args...] -> sets HTTP_CODE and HTTP_BODY (0
   local raw rc=0
   # Do NOT die on a connection failure: the caller's retry loop treats 000 as transient
   # (Keycloak/Ingress not up for THIS request yet) and keeps polling.
-  raw=$(curl -sS -w $'\n%{http_code}' "$url" "$@" 2>/dev/null) || rc=$?
+  # Bound every attempt: without --connect-timeout/--max-time a curl to an unreachable/slow-DNS
+  # host blocks for the OS default (~1–2 min), which silently inflated the retry budget below
+  # (the loop assumed each try ≈ interval). Now a failed try returns in seconds.
+  raw=$(curl -sS --connect-timeout 5 --max-time 15 -w $'\n%{http_code}' "$url" "$@" 2>/dev/null) || rc=$?
   if (( rc != 0 )); then HTTP_CODE=000; HTTP_BODY="curl exit ${rc}"; return 0; fi
   HTTP_CODE="${raw##*$'\n'}"
   HTTP_BODY="${raw%$'\n'*}"
@@ -80,7 +83,9 @@ http_post() {  # http_post URL [curl args...] -> sets HTTP_CODE and HTTP_BODY (0
 # / 504) until the budget is spent, and fail fast only on definitive errors (401 wrong creds,
 # 404 misrouted Ingress). Override the budget with KC_WAIT (seconds).
 authenticate_admin() {
-  local wait="${KC_WAIT:-300}" waited=0 interval=10
+  # Budget by REAL elapsed time (deadline), not by summing interval — otherwise a slow curl makes
+  # the printed "Ns/300s" a fiction and the loop runs far past the intended wall-clock budget.
+  local wait="${KC_WAIT:-300}" interval=10 start=$SECONDS
   echo ">> Authenticating as '${KEYCLOAK_ADMIN_USER}' against ${KEYCLOAK_URL}/realms/${ADMIN_REALM} (up to ${wait}s)"
   while :; do
     http_post "${KEYCLOAK_URL}/realms/${ADMIN_REALM}/protocol/openid-connect/token" \
@@ -95,9 +100,9 @@ authenticate_admin() {
       401) die "admin login rejected. If you deleted temp-admin (Runbook 5a), export KEYCLOAK_ADMIN_USER and KEYCLOAK_ADMIN_PASSWORD for your permanent admin." ;;
       404) die "HTTP 404 from ${KEYCLOAK_URL} — the Keycloak Ingress is not routing (TS-PLATFORM-04)." ;;
       000|502|503|504)
-        (( waited >= wait )) && die "Keycloak still returning HTTP ${HTTP_CODE} after ${wait}s — check: kubectl -n ${NS_SYSTEM} get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
-        printf '   not ready yet (HTTP %s); retrying… (%ss/%ss)\n' "$HTTP_CODE" "$waited" "$wait"
-        sleep "$interval"; waited=$((waited + interval)) ;;
+        (( SECONDS - start >= wait )) && die "Keycloak still returning HTTP ${HTTP_CODE} after ${wait}s (real time). HTTP 000 = unreachable: on Civo the LB is a hostname, so keycloak.<host>.nip.io does not resolve — bootstrap resolves it to an IP; if you run this script standalone, pass a reachable KEYCLOAK_URL (resolved IP or a port-forward). Otherwise check: kubectl -n ${NS_SYSTEM} get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
+        printf '   not ready yet (HTTP %s); retrying… (%ss/%ss)\n' "$HTTP_CODE" "$((SECONDS - start))" "$wait"
+        sleep "$interval" ;;
       *) die "token request returned HTTP ${HTTP_CODE}: $(printf '%.200s' "$HTTP_BODY")" ;;
     esac
   done

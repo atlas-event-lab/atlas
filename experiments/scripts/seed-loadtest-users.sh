@@ -75,10 +75,12 @@ validate_config() {
 # short refresh path: kc_api re-invokes it on a 401 mid-run, where Keycloak is already healthy
 # and it returns on the first attempt. Override the budget with KC_WAIT (seconds).
 fetch_admin_token() {
-  local wait="${KC_WAIT:-300}" waited=0 interval=10 raw rc code body
+  # Budget by REAL elapsed time (deadline), not by summing interval, and bound each curl so an
+  # unreachable host fails in seconds instead of blocking the OS default (~1–2 min) per try.
+  local wait="${KC_WAIT:-300}" interval=10 start=$SECONDS raw rc code body
   while :; do
     rc=0
-    raw="$(curl -sS -w $'\n%{http_code}' -X POST \
+    raw="$(curl -sS --connect-timeout 5 --max-time 15 -w $'\n%{http_code}' -X POST \
       "$KEYCLOAK_URL/realms/$ADMIN_REALM/protocol/openid-connect/token" \
       -H 'Content-Type: application/x-www-form-urlencoded' \
       -d 'grant_type=password' \
@@ -94,9 +96,9 @@ fetch_admin_token() {
       401) die "admin login rejected — check KEYCLOAK_ADMIN_USER / KEYCLOAK_ADMIN_PASSWORD." ;;
       404) die "HTTP 404 from $KEYCLOAK_URL — the Keycloak Ingress is not routing (TS-PLATFORM-04)." ;;
       000|502|503|504)
-        (( waited >= wait )) && die "Keycloak still returning HTTP $code after ${wait}s — check: kubectl -n atlas-system get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
-        log "  Keycloak not ready (HTTP $code); retrying… (${waited}s/${wait}s)"
-        sleep "$interval"; waited=$((waited + interval)) ;;
+        (( SECONDS - start >= wait )) && die "Keycloak still returning HTTP $code after ${wait}s (real time). HTTP 000 = unreachable (e.g. an unresolvable keycloak.<host>.nip.io URL — pass a reachable KEYCLOAK_URL). Else check: kubectl -n atlas-system get pod keycloak-0 (TS-PLATFORM-08 if it loops on exit 137)."
+        log "  Keycloak not ready (HTTP $code); retrying… ($((SECONDS - start))s/${wait}s)"
+        sleep "$interval" ;;
       *) die "admin token request returned HTTP $code: $(printf '%.200s' "$body")" ;;
     esac
   done
@@ -108,7 +110,7 @@ fetch_admin_token() {
 kc_api() {
   local method="$1" path="$2" body="${3:-}"
   _call() {
-    local args=(-sS -o "$BODY_FILE" -w '%{http_code}' -X "$method"
+    local args=(-sS --connect-timeout 5 --max-time 30 -o "$BODY_FILE" -w '%{http_code}' -X "$method"
                 -H "Authorization: Bearer $ADMIN_TOKEN")
     [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' --data "$body")
     curl "${args[@]}" "$KEYCLOAK_URL$path"

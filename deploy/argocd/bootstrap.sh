@@ -95,6 +95,55 @@ ensure_ingress_webhook_ready() {  # [timeout_s]
   return 0
 }
 
+# Retry any kubectl subcommand with exponential backoff. A freshly-provisioned control plane
+# (Civo/k3s especially, but this is provider-agnostic) accepts trivial calls like `cluster-info`
+# while still being too cold to serve heavy ones — the first real apply then dies downloading the
+# OpenAPI schema ("failed to download openapi ... Client.Timeout while reading body"). Retrying
+# absorbs that transient window. Uses only kubectl against the current context.
+kubectl_retry() {  # <kubectl args...>
+  local -i attempt=1 max=5 delay=5
+  while true; do
+    if kubectl "$@"; then return 0; fi
+    (( attempt >= max )) && return 1
+    warn "kubectl $1 failed (attempt $attempt/$max) — control plane may still be warming up; retrying in ${delay}s"
+    sleep "$delay"; attempt=$((attempt + 1)); delay=$((delay * 2))
+  done
+}
+
+# `kubectl apply` with a generous per-request timeout + retries. The timeout gives the OpenAPI
+# body time to download over a slow link; the retries cover a control plane that is still cold.
+kapply() { kubectl_retry apply --request-timeout=60s "$@"; }
+
+# Resolve a hostname to its first IPv4, using whatever resolver the operator's box has. Prints the
+# IP (or nothing). The nip.io public-hostname scheme needs an IP embedded in the name
+# (keycloak.<IP>.nip.io); Oracle OKE hands the ingress LB an IP directly, but Civo/AWS hand a
+# *hostname* — resolving it keeps the scheme provider-agnostic.
+resolve_ipv4() {  # <hostname>
+  local h="$1" ip=""
+  if command -v dig    >/dev/null 2>&1; then ip="$(dig +short A "$h" 2>/dev/null | grep -Eo '^[0-9]+(\.[0-9]+){3}$' | head -1)"; fi
+  if [[ -z "$ip" ]] && command -v getent  >/dev/null 2>&1; then ip="$(getent ahostsv4 "$h" 2>/dev/null | awk 'NR==1{print $1}')"; fi
+  if [[ -z "$ip" ]] && command -v host    >/dev/null 2>&1; then ip="$(host -t A "$h" 2>/dev/null | awk '/has address/{print $NF; exit}')"; fi
+  if [[ -z "$ip" ]] && command -v python3 >/dev/null 2>&1; then ip="$(python3 -c 'import socket,sys; print(socket.gethostbyname(sys.argv[1]))' "$h" 2>/dev/null || true)"; fi
+  printf '%s' "$ip"
+}
+
+# Gate the first heavy call behind REAL API-server readiness. `kubectl cluster-info` (preflight) is
+# a trivial request and passes long before the server can serve the aggregated OpenAPI that
+# `kubectl apply` downloads to validate — exactly what times out on a cold cluster. Poll /readyz
+# AND warm the OpenAPI endpoint (each attempt bounded so a stalled body read can't hang) until both
+# succeed. Provider-agnostic: only kubectl against the current context.
+wait_for_apiserver() {  # [timeout_s]
+  local timeout="${1:-180}" waited=0 interval=5
+  while true; do
+    if kubectl --request-timeout=30s get --raw='/readyz' >/dev/null 2>&1 \
+       && kubectl --request-timeout=45s get --raw='/openapi/v2' >/dev/null 2>&1; then
+      return 0
+    fi
+    (( waited >= timeout )) && return 1
+    sleep "$interval"; waited=$((waited + interval))
+  done
+}
+
 # ═════════════════════════════════════════════════════════════════════════════
 # PHASE A — pre-root: secrets, configmap, Argo CD, root app
 # ═════════════════════════════════════════════════════════════════════════════
@@ -111,8 +160,19 @@ if ! kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.annotatio
 fi
 ok "Preflight passed ($(kubectl config current-context))"
 
+# 1b. API-server warm-up gate. cluster-info above is trivial and passes while a freshly provisioned
+# control plane is still too cold to serve the OpenAPI that `kubectl apply` validates against —
+# which is what times out on the first apply. Wait until it can actually serve it, so the run is
+# deterministic on any provider (Civo cold start, OKE, …), not a coin flip.
+log "Waiting for the API server to be ready for heavy requests (OpenAPI)"
+if wait_for_apiserver 180; then
+  ok "API server ready"
+else
+  warn "API server still not serving OpenAPI after 180s — continuing; the retrying kapply keeps trying."
+fi
+
 # 2. Namespaces (so the secrets below have a home).
-kubectl apply -f "$REPO_ROOT/deploy/platform/00-namespaces.yaml"
+kapply -f "$REPO_ROOT/deploy/platform/00-namespaces.yaml"
 ok "Namespaces applied"
 
 # 3. Per-service DB secrets (random passwords, replicated across namespaces). Reused as-is.
@@ -165,8 +225,8 @@ kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
 ok "Argo CD installed"
 
 # 6. Project + root app → Argo drives waves 0..9.
-kubectl apply -f "$ARGO_DIR/projects/atlas-project.yaml"
-kubectl apply -f "$ARGO_DIR/root-app.yaml"
+kapply -f "$ARGO_DIR/projects/atlas-project.yaml"
+kapply -f "$ARGO_DIR/root-app.yaml"
 ok "AppProject + root app applied — Argo is now converging the stack"
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -185,7 +245,18 @@ for _ in $(seq 1 120); do   # up to ~10 min
   sleep 5
 done
 [[ -n "$LB" ]] || die "LoadBalancer IP never appeared — check the ingress-nginx app in the Argo UI"
-ok "LoadBalancer IP: $LB"
+
+# Provider-agnostic: nip.io hostnames (keycloak.$LB.nip.io) need an IPv4 in the name. Oracle OKE
+# gives the LB an IP (the branch below is a no-op). Civo/AWS give a *hostname* — resolve it to an
+# IP, or every nip.io URL (services' issuer, Keycloak, the UIs) is unresolvable and auth hangs.
+if [[ ! "$LB" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
+  log "Ingress LB is a hostname ($LB) — resolving it to an IP for the nip.io hostnames"
+  LB_IP="$(resolve_ipv4 "$LB")"
+  [[ -n "$LB_IP" ]] || die "could not resolve $LB to an IPv4 (need dig/host/getent/python3). nip.io requires an IP — resolve the LB hostname and set LB=<ip>, then re-run."
+  ok "Resolved ingress hostname → $LB_IP"
+  LB="$LB_IP"
+fi
+ok "LoadBalancer address: $LB"
 
 # 8. atlas-issuer Secret (public Keycloak issuer) — services (wave 7) need it to start.
 kubectl create secret generic atlas-issuer -n atlas-apps \
