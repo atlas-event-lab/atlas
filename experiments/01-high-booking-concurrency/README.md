@@ -83,7 +83,11 @@ k6 run -e ITERATIONS=1 load.js          # 1 journey  -> 1 booking
 k6 run -e ITERATIONS=5 load.js          # 5 journeys -> 5 bookings
 make -C .. smoke EXP=01-high-booking-concurrency N=5   # same, via Makefile
 ```
-
+> If missing KEYCLOAK_CLIENT_SECRET, run the script to get cluster credentials
+>```bash 
+> export LB=<ingress EXTERNAL-IP>  # kubectl -n atlas-system get svc ingress-nginx-controller  
+> eval "$(../scripts/cluster-credentials.sh)"
+>```
 Add `-e VUS=2` to run a few in parallel, `-e SCENARIO=both` to smoke the flight+hotel path.
 
 `ITERATIONS` also trims **discovery** to a single route: `setup()` walks the `ROUTES` table in
