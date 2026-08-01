@@ -28,7 +28,7 @@ See [Oracle-cluster](../cluster/oracle/terraform/README.md) for more details
 ```bash
 cd deploy/cluster/civo/terraform      # from repo root
 export CIVO_TOKEN="your-civo-api-key" #go to your civo Dashboard (Account → Security → API keys)
-terraform init && terraform apply.    # ~ 5 min
+terraform init && terraform apply    # ~ 5 min
 ./save-kubeconfig.sh
 export KUBECONFIG=~/.kube/civo-atlas.yaml
 ```

@@ -51,7 +51,7 @@ give the 12 vCPU / 48 GB cluster).
 |----------|---------|--------------|
 | `civo_token` | `""` (uses `CIVO_TOKEN` env) | Civo API key. **Prefer the env var**; leave empty here. |
 | `region` | `NYC1` | Civo region. Others: `LON1`, `FRA1`, `PHX1` … (`civo region ls`). |
-| `cluster_name` | `atlas-civo` | Cluster name (also names the network/firewall). |
+| `cluster_name` | `atlas-civo` | Cluster name (also names the firewall). |
 | `kubernetes_version` | `""` (Civo default) | **Pin it** (k3s format, e.g. `1.36.0-k3s1`) for reproducibility. List: `civo kubernetes versions`. |
 | `cni` | `flannel` | Cluster CNI (`flannel` or `cilium`). |
 | `node_size` | `g4p.kube.small` | Node type. `g4p.kube.small` = 4 vCPU / 16 GB (Performance family). List: `civo kubernetes size`. |
@@ -75,13 +75,17 @@ Civo has no "stop"; the off switch is destroying the cluster (stops all billing)
 terraform destroy        # from this folder — $0 while down
 ```
 
-**Prefer the wrapper** [`deploy/ops/civo/cluster.sh`](../../../ops/civo) (`up`/`down`/`status`)
-over a bare `terraform destroy` for teardown. A raw `destroy` fails on the last step with
-`DatabaseNetworkInUseByVolumes`: the stateful pods (Kafka, Postgres, observability) each get a
-Civo **block volume** that Terraform didn't create and can't delete, so the volumes orphan and
-block the network. `cluster.sh down` deletes the PVCs first (letting the CSI free the volumes) and
-sweeps any leftovers as a fallback. If you already hit the error, see
-[TROUBLESHOOTING TS-CIVO-03](../../../TROUBLESHOOTING.md#ts-civo-03--civo-terraform-destroy-fails-databasenetworkinusebyvolumes).
+**Prefer the wrapper** [`deploy/ops/civo/cluster.sh`](../../../ops/civo) (`up`/`down`/`reset`/`status`)
+over a bare `terraform destroy` for teardown. A raw `destroy` is now safe — Terraform manages only
+the firewall and cluster (both always deletable); it does **not** manage the network (the cluster
+runs on Civo's default network), so it can't get stuck on it. But the stateful pods (Kafka,
+Postgres, observability) each get a Civo **block volume** from the CSI driver that Terraform never
+created and can't delete, so those `pvc-*` volumes **orphan and keep billing**. `cluster.sh down`
+deletes the PVCs first (letting the CSI free the volumes) and sweeps any leftovers. If a run ever
+lands in a dirty state (a `terraform apply` that errors with `renaming the network`, an old
+`civo_network` in state, or a half-finished teardown), `./cluster.sh reset` returns you to a clean
+slate. See
+[TROUBLESHOOTING TS-CIVO-03](../../../TROUBLESHOOTING.md#ts-civo-03--civo-leftover-csi-volumes-or-recovering-a-dirty-terraform-state).
 
 > ⚠️ **Data:** teardown removes those volumes, so PVC data (Postgres/Kafka) is **lost** unless the
 > PVs use `reclaimPolicy: Retain`. Treat the cluster as ephemeral and re-seed on `up` (the
