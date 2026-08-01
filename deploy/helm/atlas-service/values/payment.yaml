@@ -6,7 +6,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-payment-service
-  tag: "sha-6e4ce98b1de236f1b9894852d02c6e82efd3bea5"
+  tag: "sha-fee2a1273a442ef4bb92a0c3648ce948ae9701b0"
 # Scaled by KEDA, not by CPU. payment-service is I/O-bound (provider HTTP + JDBC), so CPU
 # utilisation barely moves while the `inventory.reserved` consumer lag grows — the CPU HPA
 # under-scales it exactly when it matters. The KEDA Kafka scaler reads that lag from the
