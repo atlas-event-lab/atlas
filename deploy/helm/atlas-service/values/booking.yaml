@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-booking-service
-  tag: "sha-0da26fff8ae6bf857edf2e21165cb1a74fe87960" # set by CI to the git-sha / release tag
+  tag: "sha-1127b979df70b7fdc381c40480a5ef95de24c1f5" # set by CI to the git-sha / release tag
 autoscaling:
   enabled: true
   minReplicas: 2
