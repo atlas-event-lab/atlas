@@ -13,7 +13,7 @@ spec:
   project: atlas
   source:
     repoURL: https://github.com/atlas-event-lab/hub.git
-    targetRevision: main
+    targetRevision: exp/pg-resources-pool1
     path: deploy/platform/cloudnative-pg
     directory:
       recurse: false

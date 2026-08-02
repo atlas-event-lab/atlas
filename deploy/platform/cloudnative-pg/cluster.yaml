@@ -26,9 +26,19 @@ spec:
     # storageClass: <name>   # omitted → uses the cluster's DEFAULT StorageClass (works on
     #                        # any cloud). Uncomment + set a name to pin a specific class.
 
+  # EXPERIMENTO (rama exp/pg-resources-pool1): Postgres deja de ser BestEffort. Con 21 JVMs
+  # al maximo de HPA sobre ~11.5 vCPU asignables, la BD que estamos midiendo era el workload
+  # de menor prioridad del nodo. Burstable, no Guaranteed, por lo apretado del cluster.
+  resources:
+    requests: { cpu: "1", memory: 4Gi }
+    limits:   { cpu: "2", memory: 6Gi }
+
   postgresql:
     parameters:
       max_connections: "200"
+      # CNPG deja shared_buffers en 128MB si no se declara: sin esto, los 6Gi del contenedor
+      # no se traducen en cache. 1GB = 25% del request, la regla que recomienda CNPG.
+      shared_buffers: "1GB"
 
   managed:
     roles:

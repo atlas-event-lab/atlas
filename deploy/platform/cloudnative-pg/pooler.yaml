@@ -40,12 +40,16 @@ spec:
     parameters:
       # Accept many app-side connections; they're cheap and multiplexed.
       max_client_conn: "400"
-      # Real server connections per (user,database) pair. 9 service DBs × 12 = up to ~108
-      # server conns at full spread — comfortably under max_connections: 200, leaving room
-      # for Keycloak (direct), replication and admin/superuser slots.
-      default_pool_size: "12"
+      # Real server connections per (user,database) pair, PER PgBouncer INSTANCE.
+      # NOTE: the previous comment here ignored `instances: 2` — the true worst case is
+      # 9 DBs x pool_size x 2 instances (x12 => 216, ABOVE max_connections: 200).
+      # EXPERIMENTO: 1 server conn por (usuario,BD) y por instancia de PgBouncer.
+      # Con instances: 2 => 2 conexiones fisicas por base, 18 en total.
+      default_pool_size: "1"
       min_pool_size: "0"             # no idle server conns while services are pre-cutover
-      reserve_pool_size: "3"         # burst headroom per pool
+      # A 0 a proposito: con 3, cada pool podia estallar a 4 por instancia justo
+      # cuando hay espera sostenida, que es el escenario que el experimento provoca.
+      reserve_pool_size: "0"
       reserve_pool_timeout: "3"
       server_idle_timeout: "120"
       # Surface pooler errors in logs during the experiments.

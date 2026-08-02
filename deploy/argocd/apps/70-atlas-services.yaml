@@ -22,7 +22,7 @@ spec:
   generators:
     - git:
         repoURL: https://github.com/atlas-event-lab/hub.git
-        revision: main
+        revision: exp/pg-resources-pool1
         files:
           - path: deploy/helm/atlas-service/values/*.yaml
   template:
@@ -35,7 +35,7 @@ spec:
       project: atlas
       source:
         repoURL: https://github.com/atlas-event-lab/hub.git
-        targetRevision: main
+        targetRevision: exp/pg-resources-pool1
         path: deploy/helm/atlas-service
         helm:
           releaseName: '{{ trimSuffix ".yaml" .path.filename }}-service'
