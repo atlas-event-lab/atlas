@@ -15,7 +15,7 @@ spec:
   project: atlas
   source:
     repoURL: https://github.com/atlas-event-lab/hub.git
-    targetRevision: main
+    targetRevision: exp/pg-resources-pool1   # EXPERIMENTO: devolver a `main` al terminar
     path: deploy/argocd/apps
     directory:
       recurse: true

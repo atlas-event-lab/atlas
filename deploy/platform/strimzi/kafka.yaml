@@ -33,9 +33,15 @@ spec:
     volumes:
       - id: 0
         type: persistent-claim
-        size: 50Gi             # Strimzi REJECTS shrinking storage later, so keep this ≥ what's provisioned
+        # 50Gi -> 10Gi. Strimzi REJECTS shrinking storage on an EXISTING pool, so this can only
+        # be done on a fresh cluster — esta es la ventana. 3 x 50Gi eran 150GB de una cuota Civo
+        # de 220GB (89% con todo el stack); 3 x 10Gi la dejan en ~75GB (34%). Una corrida de
+        # 9 min a 60 bookings/s genera cientos de MB, no decenas de GB.
+        size: 10Gi
         # class: <name>        # omitted → uses the cluster's DEFAULT StorageClass. Uncomment + set to pin one.
-        deleteClaim: false
+        # false dejaba los volumenes huerfanos facturando al destruir el cluster: asi se acumularon
+        # 195GB de basura en Civo. En un lab que se recrea seguido, true es lo correcto.
+        deleteClaim: true
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka
