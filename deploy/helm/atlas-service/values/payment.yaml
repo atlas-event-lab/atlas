@@ -34,7 +34,7 @@ config:
   # EXPERIMENTO (rama exp/pg-resources-pool1): Hikari alineado con el pooler.
   # Nombres en formato relaxed-binding de Spring: punto -> "_", GUION ELIMINADO, mayusculas.
   # Un guion aqui haria que kubelet descarte la variable (no es un C_IDENTIFIER valido).
-  SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE: "4"
+  SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE: "8"
   SPRING_DATASOURCE_HIKARI_MINIMUMIDLE: "2"
   SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
   SPRING_FLYWAY_BASELINE_VERSION: "0"
