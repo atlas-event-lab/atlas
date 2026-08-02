@@ -39,13 +39,13 @@ spec:
     poolMode: transaction
     parameters:
       # Accept many app-side connections; they're cheap and multiplexed.
-      max_client_conn: "400"
+      max_client_conn: "100"
       # Real server connections per (user,database) pair, PER PgBouncer INSTANCE.
       # NOTE: the previous comment here ignored `instances: 2` — the true worst case is
       # 9 DBs x pool_size x 2 instances (x12 => 216, ABOVE max_connections: 200).
       # EXPERIMENTO: 1 server conn por (usuario,BD) y por instancia de PgBouncer.
       # Con instances: 2 => 2 conexiones fisicas por base, 18 en total.
-      default_pool_size: "1"
+      default_pool_size: "4"
       min_pool_size: "0"             # no idle server conns while services are pre-cutover
       # A 0 a proposito: con 3, cada pool podia estallar a 4 por instancia justo
       # cuando hay espera sostenida, que es el escenario que el experimento provoca.
