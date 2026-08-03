@@ -1,15 +1,36 @@
-# Grafana dashboard — Atlas DB connections & PgBouncer pooler (ADR-0032).
-# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label grafana_dashboard: "1").
+# Grafana dashboard — Atlas DB connections & PgBouncer pooler.
+# Auto-cargado por el sidecar de Grafana de kube-prometheus-stack (label grafana_dashboard: "1").
 #
-# PHYSICAL / real connections come from Postgres itself — `cnpg_backends_total` (pg_stat_activity),
-# the authoritative count, hard-capped at max_connections (200), broken down per service via its
-# `datname` label. The pgBouncer server-side `sv_*` "physical" metrics were REMOVED: summed across
-# the 2 HA pooler pods plus transient sv_login/sv_tested states they over-counted and could exceed
-# 200, which is impossible for real backends — misleading. pgBouncer metrics are kept only for the
-# CLIENT side (cl_*) and wait/throughput, which is what they measure well.
+# PROPOSITO: validar (o refutar) la hipotesis de CONNECTION PINNING.
+#   Observado en el ultimo run: 120 conexiones fisicas contra una base que nunca paso de 1 CPU.
+#   Si esas conexiones estuvieran ejecutando SQL harian falta ~120 cores. La hipotesis es que en
+#   poolMode=transaction la conexion queda pineada desde BEGIN hasta COMMIT, y que la transaccion
+#   pasa la mayor parte de su vida esperando I/O que NO es de base de datos:
+#     - booking-service: BookingServiceImpl.createBooking es @Transactional y llama por Feign a
+#       flight-service / hotel-service dentro de la transaccion (validateCatalogPrice).
+#     - OutboxRelay (booking, inventory, payment): @Transactional que hace kafkaTemplate.flush() y
+#       future.get() esperando acks=all, sosteniendo ademas FOR UPDATE sobre las filas del outbox.
+#     - inventory-service: PESSIMISTIC_WRITE (SELECT ... FOR UPDATE) sobre vuelos y noches de habitacion.
 #
-# Fed by the CNPG collector (cnpg_backends_total) + the pooler PodMonitor (cnpg_pgbouncer_*).
-# Apply:  kubectl apply -f pgbouncer-dashboard.yaml   (or let Argo CD sync it)
+# TRES FUENTES INDEPENDIENTES, una por fila del dashboard:
+#   1. "Transaction pinning"  -> PgBouncer: total_xact_time vs total_query_time. La diferencia ES,
+#      por definicion, tiempo pineado sin ejecutar SQL. Es la metrica que zanja el debate.
+#   2. "Backend states"       -> Postgres: cnpg_backends_total por `state` (idle in transaction vs active)
+#      y cnpg_backends_max_tx_duration_seconds.
+#   3. "Hikari"               -> la app: cuanto retiene cada conexion, via Actuator, sin tocar codigo.
+#   + "Lock contention"       -> cnpg_backends_waiting_total, para la parte de PESSIMISTIC_WRITE.
+#
+# COMO LEERLO EN UN RUN:
+#   - Gauge "% del tiempo de transaccion SIN ejecutar SQL" > 60% => hipotesis confirmada.
+#   - "Conexiones equivalentes EJECUTANDO SQL" es la demanda REAL de conexiones (ley de Little).
+#     Comparar contra los backends fisicos: esa brecha es el sobredimensionamiento del pool.
+#   - Con default_pool_size bajado a 8 (pooler.yaml) se espera que booking encole. Eso es
+#     intencional: cl_waiting / total_wait_time subiendo mientras el % idle-in-tx sigue alto
+#     demuestra que el pool actua como semaforo sobre transacciones largas, no como capacidad de BD.
+#
+# Metricas: collector de CNPG (cnpg_backends_*, cnpg_pg_stat_database_*), PodMonitor del pooler
+# (cnpg_pgbouncer_*) y Actuator de cada servicio (hikaricp_*, label `job` = nombre del servicio).
+# Aplicar:  kubectl apply -f pgbouncer-dashboard.yaml   (o dejar que Argo CD lo sincronice)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -29,11 +50,12 @@ data:
         "pgbouncer",
         "pooler",
         "database",
-        "connections"
+        "connections",
+        "pinning"
       ],
       "timezone": "browser",
       "schemaVersion": 39,
-      "version": 2,
+      "version": 3,
       "refresh": "5s",
       "time": {
         "from": "now-30m",
@@ -47,6 +69,32 @@ data:
             "query": "prometheus",
             "current": {},
             "hide": 0
+          },
+          {
+            "name": "pginstance",
+            "type": "query",
+            "label": "Postgres instance",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "query": {
+              "query": "label_values(cnpg_backends_total, pod)",
+              "refId": "var"
+            },
+            "refresh": 2,
+            "multi": true,
+            "includeAll": true,
+            "current": {
+              "selected": true,
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
+            },
+            "description": "Instancias CNPG a incluir. Todo el trafico de las apps va al pooler rw -> primary, asi que la replica solo aporta backends de replicacion y del collector. Selecciona solo el primary para una cuenta limpia."
           }
         ]
       },
@@ -54,7 +102,7 @@ data:
         {
           "type": "gauge",
           "title": "Real backends vs max_connections (200)",
-          "description": "sum(cnpg_backends_total) — the REAL server-side connections on Postgres (pg_stat_activity), across all sources. Hard-capped at max_connections (200). This is the authoritative 'physical connections' number; the pgBouncer sv_* view was removed (it over-counted transient states).",
+          "description": "sum(cnpg_backends_total) — las conexiones REALES del lado servidor en Postgres (pg_stat_activity). Tope duro en max_connections (200). Esta es la cifra autoritativa de 'conexiones fisicas'; la vista sv_* de pgBouncer se removio porque sobrecontaba estados transitorios. OJO: con $pginstance = All esto suma primary + replica.",
           "gridPos": {
             "h": 6,
             "w": 8,
@@ -65,16 +113,10 @@ data:
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "targets": [
-            {
-              "expr": "sum(cnpg_backends_total)",
-              "refId": "A"
-            }
-          ],
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "decimals": 0,
+              "decimals": 1,
               "min": 0,
               "max": 200,
               "color": {
@@ -106,12 +148,18 @@ data:
               ]
             },
             "showThresholdMarkers": true
-          }
+          },
+          "targets": [
+            {
+              "expr": "sum(cnpg_backends_total{pod=~\"$pginstance\"})",
+              "refId": "A"
+            }
+          ]
         },
         {
           "type": "stat",
-          "title": "Logical clients (app → PgBouncer)",
-          "description": "cl_active + cl_waiting — client connections into PgBouncer (cheap, multiplexed). Bounded by max_client_conn (400).",
+          "title": "Logical clients (app -> PgBouncer)",
+          "description": "cl_active + cl_waiting — conexiones cliente hacia PgBouncer (baratas, multiplexadas). Acotadas por max_client_conn (200 por instancia, pooler.yaml).",
           "gridPos": {
             "h": 6,
             "w": 8,
@@ -122,12 +170,6 @@ data:
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "targets": [
-            {
-              "expr": "sum(cnpg_pgbouncer_pools_cl_active) + sum(cnpg_pgbouncer_pools_cl_waiting)",
-              "refId": "A"
-            }
-          ],
           "fieldConfig": {
             "defaults": {
               "unit": "short",
@@ -146,12 +188,18 @@ data:
                 "lastNotNull"
               ]
             }
-          }
+          },
+          "targets": [
+            {
+              "expr": "sum(cnpg_pgbouncer_pools_cl_active) + sum(cnpg_pgbouncer_pools_cl_waiting)",
+              "refId": "A"
+            }
+          ]
         },
         {
           "type": "stat",
           "title": "Multiplex ratio (clients per real backend)",
-          "description": "logical clients / real Postgres backends. > 1 means the pooler is genuinely multiplexing many clients onto few real connections.",
+          "description": "clientes logicos / backends reales de Postgres. En poolMode=transaction un ratio sano es >= 10:1. Un ratio cercano a 2:1 es la firma de transacciones LARGAS: la conexion no se devuelve al pool porque la transaccion sigue abierta esperando I/O.",
           "gridPos": {
             "h": 6,
             "w": 8,
@@ -162,12 +210,6 @@ data:
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "targets": [
-            {
-              "expr": "(sum(cnpg_pgbouncer_pools_cl_active) + sum(cnpg_pgbouncer_pools_cl_waiting)) / clamp_min(sum(cnpg_backends_total), 1)",
-              "refId": "A"
-            }
-          ],
           "fieldConfig": {
             "defaults": {
               "unit": "none",
@@ -186,12 +228,18 @@ data:
                 "lastNotNull"
               ]
             }
-          }
+          },
+          "targets": [
+            {
+              "expr": "(sum(cnpg_pgbouncer_pools_cl_active) + sum(cnpg_pgbouncer_pools_cl_waiting)) / clamp_min(sum(cnpg_backends_total{pod=~\"$pginstance\"}), 1)",
+              "refId": "A"
+            }
+          ]
         },
         {
           "type": "timeseries",
           "title": "Real backends per service",
-          "description": "sum by (datname) (cnpg_backends_total): real Postgres backends per database — i.e. per service (database-per-service). If a line pins high it is that service holding the most connections. (If empty, the label may be 'database' instead of 'datname' in your CNPG build.)",
+          "description": "cnpg_backends_total por datname — backends reales por base, es decir por servicio (database-per-service). Techo por servicio = default_pool_size x 2 instancias de PgBouncer (8 x 2 = 16). Una linea clavada en el techo = ese pool esta saturado.",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -206,15 +254,31 @@ data:
             "defaults": {
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 12
+                "fillOpacity": 12,
+                "lineWidth": 2
               },
               "unit": "short",
               "decimals": 0
             }
           },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
           "targets": [
             {
-              "expr": "sum by (datname) (cnpg_backends_total)",
+              "expr": "sum by (datname) (cnpg_backends_total{pod=~\"$pginstance\"})",
               "legendFormat": "{{datname}}",
               "refId": "A"
             }
@@ -223,7 +287,7 @@ data:
         {
           "type": "timeseries",
           "title": "Real backends (total) vs logical clients",
-          "description": "The multiplexing over time: real Postgres backends (cnpg_backends_total) against the multiplexed client connections into PgBouncer. The gap is what pooling buys.",
+          "description": "El multiplexado en el tiempo: backends reales de Postgres contra las conexiones cliente multiplexadas hacia PgBouncer. El hueco entre ambas es lo que compra el pooling.",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -238,15 +302,31 @@ data:
             "defaults": {
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 12
+                "fillOpacity": 12,
+                "lineWidth": 2
               },
               "unit": "short",
               "decimals": 0
             }
           },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
           "targets": [
             {
-              "expr": "sum(cnpg_backends_total)",
+              "expr": "sum(cnpg_backends_total{pod=~\"$pginstance\"})",
               "legendFormat": "real backends (Postgres)",
               "refId": "A"
             },
@@ -260,7 +340,7 @@ data:
         {
           "type": "timeseries",
           "title": "Clients waiting",
-          "description": "sum(cnpg_pgbouncer_pools_cl_waiting) over time — clients queued because no server connection was free in the pool. Sustained > 0 means default_pool_size (12) is too small for the load, even while Postgres has backend headroom.",
+          "description": "cl_waiting — clientes encolados porque no habia server connection libre en el pool. Con default_pool_size: 8 se ESPERA ver esto > 0 en booking (llego a 32 fisicas en el ultimo run, el techo ahora es 16). Sostenido > 0 significa que el pool es el semaforo. CAVEAT: cl_waiting es un gauge muestreado cada scrape; esperas de milisegundos NO se ven aqui. Para esperas cortas usar 'Wait time acumulado' abajo, que viene de un contador y no se pierde nada.",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -275,16 +355,32 @@ data:
             "defaults": {
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 12
+                "fillOpacity": 12,
+                "lineWidth": 2
               },
               "unit": "short",
               "decimals": 0
             }
           },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
           "targets": [
             {
-              "expr": "sum(cnpg_pgbouncer_pools_cl_waiting)",
-              "legendFormat": "clients waiting",
+              "expr": "sum by (database) (cnpg_pgbouncer_pools_cl_waiting)",
+              "legendFormat": "{{database}}",
               "refId": "A"
             }
           ]
@@ -292,7 +388,7 @@ data:
         {
           "type": "timeseries",
           "title": "Wait time (max queued & avg)",
-          "description": "max(pools_maxwait) = how long the oldest queued client has waited; max(stats_avg_wait_time) = average query wait for a server connection. Rising = pool saturation.",
+          "description": "maxwait = cuanto lleva esperando el cliente mas antiguo en cola; avg_wait_time = espera media por obtener una server connection. Subiendo = saturacion del pool.",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -307,9 +403,25 @@ data:
             "defaults": {
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 12
+                "fillOpacity": 12,
+                "lineWidth": 2
               },
               "unit": "s"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
             }
           },
           "targets": [
@@ -328,7 +440,7 @@ data:
         {
           "type": "timeseries",
           "title": "Throughput (queries & transactions /s)",
-          "description": "rate of cnpg_pgbouncer_stats_total_query_count and total_xact_count. In transaction pool mode each transaction is what borrows/returns a server connection.",
+          "description": "rate de total_query_count y total_xact_count. En poolMode=transaction cada TRANSACCION es lo que toma y devuelve una server connection. queries/xact alto = transacciones con mucho SQL; queries/xact ~1 con transacciones largas = la transaccion esta esperando, no consultando.",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -343,19 +455,35 @@ data:
             "defaults": {
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 12
+                "fillOpacity": 12,
+                "lineWidth": 2
               },
               "unit": "reqps"
             }
           },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
           "targets": [
             {
-              "expr": "sum(rate(cnpg_pgbouncer_stats_total_query_count[$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pgbouncer_stats_total_query_count{database=~\".*_db\"}[$__rate_interval]))",
               "legendFormat": "queries/s",
               "refId": "A"
             },
             {
-              "expr": "sum(rate(cnpg_pgbouncer_stats_total_xact_count[$__rate_interval]))",
+              "expr": "sum(rate(cnpg_pgbouncer_stats_total_xact_count{database=~\".*_db\"}[$__rate_interval]))",
               "legendFormat": "transactions/s",
               "refId": "B"
             }
@@ -363,8 +491,8 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "Avg wait per database",
-          "description": "cnpg_pgbouncer_stats_avg_wait_time by pool (per <svc>_db). Time queries spend waiting for a server connection — the saturation early-warning per service.",
+          "title": "Wait time acumulado por base (contador)",
+          "description": "rate(total_wait_time) — segundos de espera por segundo, por base. A diferencia de cl_waiting este viene de un CONTADOR, asi que captura esperas de milisegundos que el gauge se pierde entre scrapes. Si esto es > 0 mientras 'Clients waiting' marca 0, el pool SI estaba encolando.",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -379,16 +507,1081 @@ data:
             "defaults": {
               "custom": {
                 "drawStyle": "line",
-                "fillOpacity": 12
+                "fillOpacity": 12,
+                "lineWidth": 2
               },
-              "unit": "s"
+              "unit": "s",
+              "decimals": 3
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
             }
           },
           "targets": [
             {
-              "expr": "max by (database) (cnpg_pgbouncer_stats_avg_wait_time) / 1e6",
+              "expr": "sum by (database) (rate(cnpg_pgbouncer_stats_total_wait_time{database=~\".*_db\"}[$__rate_interval])) / 1e6",
               "legendFormat": "{{database}}",
               "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "Transaction pinning — la conexion, trabaja o espera?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 30
+          },
+          "panels": []
+        },
+        {
+          "type": "gauge",
+          "title": "% del tiempo de transaccion SIN ejecutar SQL",
+          "description": "1 - (total_query_time / total_xact_time). PgBouncer define total_xact_time como los microsegundos conectado a Postgres DENTRO de una transaccion (idle-in-transaction + ejecutando) y total_query_time como los microsegundos ejecutando queries. La diferencia es, por definicion, tiempo en que la server connection estuvo PINEADA sin hacer nada.\n\nESTA ES LA METRICA QUE ZANJA LA HIPOTESIS. Si esto marca > 60%, las conexiones no son capacidad de base de datos: son transacciones esperando I/O (Feign a flight/hotel-service dentro de @Transactional, acks de Kafka dentro del OutboxRelay, esperas de lock en PESSIMISTIC_WRITE).",
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 0,
+            "y": 31
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 30
+                  },
+                  {
+                    "color": "red",
+                    "value": 60
+                  }
+                ]
+              }
+            }
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "expr": "100 * (1 - (sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval]))) / clamp_min(sum(rate(cnpg_pgbouncer_stats_total_xact_time{database=~\".*_db\"}[$__rate_interval])), 1))",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Conexiones equivalentes EJECUTANDO SQL",
+          "description": "rate(total_query_time) en segundos/segundo. Por la ley de Little esto ES el numero medio de conexiones que realmente estaban ejecutando SQL. Comparar con el gauge de backends fisicos arriba: esta es la cantidad de conexiones que la base de datos de verdad necesita. Si Postgres nunca paso de 1 CPU, este numero deberia rondar 1-2.",
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 8,
+            "y": 31
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "green"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "expr": "(sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval]))) / 1e6",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Conexiones equivalentes IDLE IN TRANSACTION",
+          "description": "rate(total_xact_time - total_query_time) en segundos/segundo = numero medio de conexiones fisicas retenidas sin ejecutar nada. Es el desperdicio: cada una cuesta ~5-10MB de RAM en Postgres y un slot de max_connections, y no aporta throughput.",
+          "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 16,
+            "y": 31
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "red"
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "expr": "((sum(rate(cnpg_pgbouncer_stats_total_xact_time{database=~\".*_db\"}[$__rate_interval]))) - (sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval])))) / 1e6",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Descomposicion de conexiones: fisicas vs ejecutando SQL vs pineadas",
+          "description": "EL PANEL DE LA HIPOTESIS. Tres series:\n  - backends fisicos: lo que Postgres tiene abierto (llego a 120 en el ultimo run).\n  - ejecutando SQL: rate(total_query_time), la demanda real de la base de datos.\n  - idle in transaction: rate(total_xact_time - total_query_time), conexiones pineadas esperando.\n\nSi 'ejecutando SQL' se queda en ~1-2 mientras 'backends fisicos' esta en 120, la regla 'pool = 2 x cores' nunca aplico: no estabas midiendo trabajo de base de datos.",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 37
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "lineWidth": 2
+              },
+              "unit": "short",
+              "decimals": 2
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(cnpg_backends_total{datname=~\".*_db\", pod=~\"$pginstance\"})",
+              "legendFormat": "backends fisicos (Postgres)",
+              "refId": "A"
+            },
+            {
+              "expr": "(sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval]))) / 1e6",
+              "legendFormat": "ejecutando SQL",
+              "refId": "B"
+            },
+            {
+              "expr": "((sum(rate(cnpg_pgbouncer_stats_total_xact_time{database=~\".*_db\"}[$__rate_interval]))) - (sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval])))) / 1e6",
+              "legendFormat": "idle in transaction",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "% idle-in-transaction por base de datos",
+          "description": "Mismo calculo, desglosado por base. Identifica QUE servicio tiene el problema. Esperado por el codigo: booking_db alto (Feign dentro de createBooking @Transactional), inventory_db alto (PESSIMISTIC_WRITE), y todas altas por el OutboxRelay (kafkaTemplate.flush() + future.get() dentro de @Transactional).",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 46
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 12,
+                "lineWidth": 2
+              },
+              "unit": "percent",
+              "decimals": 1
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "100 * (1 - (sum by (database) (rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval]))) / clamp_min(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_time{database=~\".*_db\"}[$__rate_interval])), 1))",
+              "legendFormat": "{{database}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Segundos por transaccion: total vs SQL real (por base)",
+          "description": "rate(total_xact_time)/rate(total_xact_count) frente a rate(total_query_time)/rate(total_xact_count). La linea 'xact' es cuanto vive la transaccion (= cuanto se pinea la conexion); la linea 'sql' es cuanto de eso fue trabajo de base de datos. El HUECO entre ambas es el I/O dentro de la transaccion.\n\nDerivado de contadores y no de los gauges avg_xact_time/avg_query_time: los avg_* son medias por pod sobre el stats_period de PgBouncer, y promediarlos entre las 2 instancias es incorrecto.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 46
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 12,
+                "lineWidth": 2
+              },
+              "unit": "s",
+              "decimals": 4
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_time{database=~\".*_db\"}[$__rate_interval]))) / clamp_min(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_count{database=~\".*_db\"}[$__rate_interval])), 0.001) / 1e6",
+              "legendFormat": "{{database}} — xact",
+              "refId": "A"
+            },
+            {
+              "expr": "(sum by (database) (rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval]))) / clamp_min(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_count{database=~\".*_db\"}[$__rate_interval])), 0.001) / 1e6",
+              "legendFormat": "{{database}} — sql",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "Backend states (pg_stat_activity) — confirmacion del lado Postgres",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 55
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "Backends por estado (pg_stat_activity)",
+              "description": "sum by (state) (cnpg_backends_total). El collector de CNPG expone `state` como label: active, idle, idle in transaction, idle in transaction (aborted). 'idle in transaction' es la confirmacion del lado Postgres de lo que mide PgBouncer en la fila anterior — dos fuentes independientes para la misma hipotesis.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 56
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2,
+                    "stacking": {
+                      "mode": "normal",
+                      "group": "A"
+                    }
+                  },
+                  "unit": "short",
+                  "decimals": 0
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (state) (cnpg_backends_total{datname=~\".*_db\", pod=~\"$pginstance\"})",
+                  "legendFormat": "{{state}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "idle in transaction por base",
+              "description": "Solo el estado que importa, desglosado por servicio. Estas conexiones tienen una transaccion abierta y no estan ejecutando nada: retienen su snapshot MVCC y sus row locks mientras esperan.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 56
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "short",
+                  "decimals": 0
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (datname) (cnpg_backends_total{datname=~\".*_db\", pod=~\"$pginstance\", state=\"idle in transaction\"})",
+                  "legendFormat": "{{datname}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "active vs idle in transaction (total)",
+              "description": "El contraste directo. 'active' es lo unico que consume CPU de Postgres — deberia seguir la curva de CPU de la base. Si 'idle in transaction' esta muy por encima de 'active', el cuello de botella no esta en la base de datos.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 64
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "lineWidth": 2
+                  },
+                  "unit": "short",
+                  "decimals": 0
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum(cnpg_backends_total{datname=~\".*_db\", pod=~\"$pginstance\", state=\"active\"})",
+                  "legendFormat": "active",
+                  "refId": "A"
+                },
+                {
+                  "expr": "sum(cnpg_backends_total{datname=~\".*_db\", pod=~\"$pginstance\", state=\"idle in transaction\"})",
+                  "legendFormat": "idle in transaction",
+                  "refId": "B"
+                },
+                {
+                  "expr": "sum(cnpg_backends_total{datname=~\".*_db\", pod=~\"$pginstance\", state=\"idle\"})",
+                  "legendFormat": "idle (fuera de tx)",
+                  "refId": "C"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Duracion maxima de transaccion abierta, por base y estado",
+              "description": "cnpg_backends_max_tx_duration_seconds — la transaccion mas vieja aun abierta. Picos con state='idle in transaction' son literalmente una conexion secuestrada por una llamada de red. Un pico sostenido de varios segundos apunta al OutboxRelay esperando acks de Kafka (acks=all, linger.ms=20, lotes de 100 filas) mientras mantiene FOR UPDATE sobre las filas del outbox.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 64
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "s",
+                  "decimals": 2
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "max by (datname, state) (cnpg_backends_max_tx_duration_seconds{datname=~\".*_db\", pod=~\"$pginstance\"})",
+                  "legendFormat": "{{datname}} / {{state}}",
+                  "refId": "A"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "Lock contention — valida PESSIMISTIC_WRITE en inventory",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 73
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "Backends bloqueados esperando un lock",
+              "description": "cnpg_backends_waiting_total — backends con un lock NO concedido, esperando a otro backend. Valida directamente la hipotesis de PESSIMISTIC_WRITE en inventory-service (FlightInventoryRepository y RoomTypeNightAvailabilityRepository usan SELECT ... FOR UPDATE). Esperar un lock consume CERO CPU y retiene la conexion: exactamente el patron que buscamos. Metrica global del cluster, sin desglose por base.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 74
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "short",
+                  "decimals": 0
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum(cnpg_backends_waiting_total{pod=~\"$pginstance\"})",
+                  "legendFormat": "backends bloqueados",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Deadlocks por base",
+              "description": "rate(cnpg_pg_stat_database_deadlocks). Deadlocks > 0 con locks pesimistas sobre filas de inventario significa que dos sagas tomaron las mismas filas en orden distinto.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 74
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "ops",
+                  "decimals": 3
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (datname) (rate(cnpg_pg_stat_database_deadlocks{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval]))",
+                  "legendFormat": "{{datname}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "TPS real por base (commit + rollback)",
+              "description": "El throughput que la base de datos realmente proceso. Es el lambda de la ley de Little: conexiones_necesarias = TPS x duracion_media_de_transaccion. Cruzar con el panel 'Segundos por transaccion' para calcular el pool correcto en vez de adivinarlo.",
+              "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 74
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "ops",
+                  "decimals": 1
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval]) + rate(cnpg_pg_stat_database_xact_rollback{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval]))",
+                  "legendFormat": "{{datname}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Ratio de rollback por base",
+              "description": "rollbacks / (commits + rollbacks). Los lock timeouts y los fallos de serializacion salen como rollback. Una subida junto con 'backends bloqueados' confirma contencion, no un bug de la app.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "percent",
+                  "decimals": 2
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "100 * sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval])) / clamp_min(sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval]) + rate(cnpg_pg_stat_database_xact_rollback{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval])), 0.001)",
+                  "legendFormat": "{{datname}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Cache hit ratio por base",
+              "description": "blks_hit / (blks_hit + blks_read). Control negativo: si esto se mantiene alto (>99%) mientras la latencia sube, la base NO esta limitada por I/O de disco — refuerza que el tiempo se va esperando fuera de Postgres. shared_buffers esta en 1GB (cluster.yaml).",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 82
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "percent",
+                  "decimals": 2
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "100 * sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval])) / clamp_min(sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval]) + rate(cnpg_pg_stat_database_blks_read{datname=~\".*_db\", pod=~\"$pginstance\"}[$__rate_interval])), 0.001)",
+                  "legendFormat": "{{datname}}",
+                  "refId": "A"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "Hikari — lado aplicacion (Actuator, sin cambios de codigo)",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 91
+          },
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "Tiempo medio que la APP retiene una conexion (Hikari)",
+              "description": "hikaricp_connections_usage_seconds_sum / _count — desde que Hikari entrega la conexion hasta que la app la devuelve. Expuesto por el Actuator sin tocar codigo.\n\nTERCERA fuente independiente: comparar con la linea 'sql' del panel 'Segundos por transaccion'. Si la app retiene la conexion 300ms y Postgres solo ejecuto 5ms de SQL, los otros 295ms son la llamada Feign a flight/hotel-service dentro de createBooking @Transactional.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 92
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "s",
+                  "decimals": 4
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "(sum by (job) (rate(hikaricp_connections_usage_seconds_sum[$__rate_interval]))) / clamp_min(sum by (job) (rate(hikaricp_connections_usage_seconds_count[$__rate_interval])), 0.001)",
+                  "legendFormat": "{{job}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Espera para OBTENER una conexion de Hikari",
+              "description": "hikaricp_connections_acquire_seconds_sum / _count. Si esto sube, el pool de Hikari (8 por pod) es el cuello de botella ANTES de llegar a PgBouncer. Con connection-timeout en 20s, una subida sostenida aqui precede a los timeouts del panel de abajo.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 92
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "s",
+                  "decimals": 4
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (job) (rate(hikaricp_connections_acquire_seconds_sum[$__rate_interval])) / clamp_min(sum by (job) (rate(hikaricp_connections_acquire_seconds_count[$__rate_interval])), 0.001)",
+                  "legendFormat": "{{job}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Conexiones Hikari: active / idle / pending",
+              "description": "active = prestadas a un hilo de la app; pending = hilos ESPERANDO una conexion. pending > 0 significa que el pool de la app satura antes que el pooler. maximum-pool-size esta en 8 por pod (values/<svc>.yaml).",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 100
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "lineWidth": 2
+                  },
+                  "unit": "short",
+                  "decimals": 0
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (job) (hikaricp_connections_active)",
+                  "legendFormat": "{{job}} — active",
+                  "refId": "A"
+                },
+                {
+                  "expr": "sum by (job) (hikaricp_connections_idle)",
+                  "legendFormat": "{{job}} — idle",
+                  "refId": "B"
+                },
+                {
+                  "expr": "sum by (job) (hikaricp_connections_pending)",
+                  "legendFormat": "{{job}} — pending",
+                  "refId": "C"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Hikari connection timeouts",
+              "description": "rate(hikaricp_connections_timeout_total) — peticiones que no consiguieron conexion en los 20s de connection-timeout. Con default_pool_size bajado a 8, este es el sintoma que se espera ver aparecer primero en booking-service.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 100
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 12,
+                    "lineWidth": 2
+                  },
+                  "unit": "ops",
+                  "decimals": 3
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (job) (rate(hikaricp_connections_timeout_total[$__rate_interval]))",
+                  "legendFormat": "{{job}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Gap app <-> base: hold time de Hikari vs SQL real por transaccion",
+              "description": "Las dos mitades de la historia superpuestas. 'hold (app)' viene de Hikari; 'sql (db)' viene de PgBouncer con label_replace mapeando <svc>_db -> <svc>-service. El area entre ambas es el I/O que ocurre con una conexion de base de datos en la mano.\n\nCAVEAT del mapeo: travel_cart_db queda como 'travel_cart-service' y no casa con el job 'travel-cart-service'. Los cuatro servicios calientes (booking, payment, inventory, search) mapean bien.",
+              "gridPos": {
+                "h": 9,
+                "w": 24,
+                "x": 0,
+                "y": 108
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "lineWidth": 2
+                  },
+                  "unit": "s",
+                  "decimals": 4
+                }
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "(sum by (job) (rate(hikaricp_connections_usage_seconds_sum[$__rate_interval]))) / clamp_min(sum by (job) (rate(hikaricp_connections_usage_seconds_count[$__rate_interval])), 0.001)",
+                  "legendFormat": "{{job}} — hold (app)",
+                  "refId": "A"
+                },
+                {
+                  "expr": "label_replace((sum by (database) (rate(cnpg_pgbouncer_stats_total_query_time{database=~\".*_db\"}[$__rate_interval]))) / clamp_min(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_count{database=~\".*_db\"}[$__rate_interval])), 0.001) / 1e6, \"job\", \"$1-service\", \"database\", \"(.*)_db\")",
+                  "legendFormat": "{{job}} — sql (db)",
+                  "refId": "B"
+                }
+              ]
             }
           ]
         }

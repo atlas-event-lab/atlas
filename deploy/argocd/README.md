@@ -26,10 +26,12 @@ See [Oracle-cluster](../cluster/oracle/terraform/README.md) for more details
 
 #### Option B - Civo
 ```bash
-cd deploy/cluster/civo/terraform      # from repo root
-export CIVO_TOKEN="your-civo-api-key" #go to your civo Dashboard (Account → Security → API keys)
-terraform init && terraform apply    # ~ 5 min
-./save-kubeconfig.sh
+cd deploy/cluster/civo/terraform      # from the repo root
+export CIVO_TOKEN="your-civo-api-key"     # auth via env — never hardcode the token
+cp terraform.tfvars.example terraform.tfvars   # optional — adjust region/name/version
+
+cd deploy/ops/civo # from the repo root
+./cluster.sh up
 export KUBECONFIG=~/.kube/civo-atlas.yaml
 ```
 See [Civo cluster](../cluster/civo/terraform/README.md) for more details.

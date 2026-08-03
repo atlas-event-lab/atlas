@@ -117,7 +117,7 @@ observability, and microservices**.
 5. **Read the [ADRs](./docs/adr) (Optional)** - understand the reasoning behind every architectural decision.
 6. **Destroy the cluster when you're done** — cloud providers charge while worker nodes are
    running. Tear the cluster down to avoid unnecessary costs:
-   - **Civo:** `./deploy/ops/civo/cluster.sh down` or `terraform destroy` — the cluster is
+   - **Civo:** `./deploy/ops/civo/cluster.sh down` — the cluster is
      gone and billing drops to **$0**.
    - **Oracle OKE:** `./deploy/cluster/oracle/terraform terraform destroy` — destroys the cluster.
 

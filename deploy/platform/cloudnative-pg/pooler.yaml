@@ -41,11 +41,27 @@ spec:
       # Accept many app-side connections; they're cheap and multiplexed.
       max_client_conn: "200"
       # Real server connections per (user,database) pair, PER PgBouncer INSTANCE.
-      # NOTE: the previous comment here ignored `instances: 2` — the true worst case is
-      # 9 DBs x pool_size x 2 instances (x12 => 216, ABOVE max_connections: 200).
-      # EXPERIMENTO: 1 server conn por (usuario,BD) y por instancia de PgBouncer.
-      # Con instances: 2 => 2 conexiones fisicas por base, 18 en total.
-      default_pool_size: "16"
+      #
+      # GUARD RAIL — el peor caso agregado DEBE caber en max_connections (200, cluster.yaml).
+      # Bases multiplexadas por este pooler: 8, NO 9. keycloak_db no cuenta: Keycloak apunta
+      # directo a atlas-pg-rw (deploy/platform/keycloak/keycloak.yaml), igual que Flyway.
+      #
+      #   peor caso pooler = 8 bases x default_pool_size x 2 instancias
+      #     16 -> 256  +conexiones directas => ~306  ROMPE max_connections
+      #     12 -> 192  +conexiones directas => ~242  ROMPE max_connections
+      #      8 -> 128  +conexiones directas => ~178  CABE
+      #
+      # "Conexiones directas" (~50, no pasan por el pooler y por tanto son ADITIVAS):
+      # Keycloak, el Flyway de cada pod al arrancar (8 servicios x hasta 4 replicas, ADR-0033),
+      # el walsender de replicacion, el collector de CNPG y superuser_reserved_connections (3).
+      #
+      # Con 8 el techo fisico por servicio baja a 16. booking-service llego a 32 en el ultimo
+      # run, asi que se espera que vuelva a encolar: cl_waiting y maxwait DEBEN dispararse.
+      # Eso es intencional — es la evidencia de que el pool actua como semaforo sobre
+      # transacciones largas, no como capacidad de base de datos. Cruzar con la fila
+      # "Transaction pinning" del dashboard atlas-pgbouncer-pooler: si el tiempo idle-in-
+      # transaction domina, el pool no es el problema, la duracion de la transaccion lo es.
+      default_pool_size: "8"
       min_pool_size: "0"             # no idle server conns while services are pre-cutover
       # A 0 a proposito: con 3, cada pool podia estallar a 4 por instancia justo
       # cuando hay espera sostenida, que es el escenario que el experimento provoca.

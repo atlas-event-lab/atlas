@@ -11,7 +11,8 @@ full size — a single fixed pool. Civo's control plane is free and clusters are
 - [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.5
 - A Civo account and an API key — create one in the Dashboard (Account → Security → API
   keys), see image below.
-- (optional) the [Civo CLI](https://www.civo.com/docs/overview/civo-cli) for `status`
+- The [Civo CLI](https://www.civo.com/docs/overview/civo-cli) for `status`
+- kubectl 
 
 ![Civo Dashboard — Account → Security → API keys](image.png)
 
@@ -25,15 +26,10 @@ cd deploy/cluster/civo/terraform      # from the repo root
 export CIVO_TOKEN="your-civo-api-key"     # auth via env — never hardcode the token
 cp terraform.tfvars.example terraform.tfvars   # optional — adjust region/name/version
 
-terraform init                            # download the civo provider (creates .terraform/)
-terraform plan                            # preview — nothing is created yet
-terraform apply                           # create the cluster (~2 min). Type "yes".
-
-# point kubectl at the new cluster (reliable — falls back to the Civo CLI if the
-# provider returns an empty kubeconfig, which it often does; see TS-CIVO-01):
-./save-kubeconfig.sh
+cd deploy/ops/civo # from the repo root
+./cluster.sh up
 export KUBECONFIG=~/.kube/civo-atlas.yaml
-kubectl get nodes                         # expect 3 Ready nodes
+kubectl get nodes          # 3 ReadyReady nodes
 ```
 
 > **`kubectl` can't connect?** Two cases, both in **TS-CIVO-01**
