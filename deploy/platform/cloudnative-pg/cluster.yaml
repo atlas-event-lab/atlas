@@ -26,9 +26,14 @@ spec:
     # storageClass: <name>   # omitted → uses the cluster's DEFAULT StorageClass (works on
     #                        # any cloud). Uncomment + set a name to pin a specific class.
 
+  resources:
+    requests: { cpu: "1", memory: 4Gi }
+    limits:   { cpu: "2", memory: 6Gi }
+
   postgresql:
     parameters:
       max_connections: "200"
+      shared_buffers: "1GB"
 
   managed:
     roles:

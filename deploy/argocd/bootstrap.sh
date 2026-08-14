@@ -390,10 +390,12 @@ EOF
 # 14. Load-test user pool. travel-cart keeps ONE active cart per user, so k6 needs one user per
 # VU — sharing an identity makes every VU collide on the same cart. Keycloak-only, so this does
 # not wait on the services. Gated only on the realm being imported (REALM_READY), NOT on step 12.
-# Runs LAST (after the card above) because seeding a large pool can take many minutes and must
-# not delay the access details reaching the operator. Skip it entirely with --loadtest-users 0.
+# Still runs LAST (after the card above) so the access details reach the operator first, but it
+# is no longer the slow step it used to be: the seeder creates each user in a SINGLE API call
+# and leaves existing members untouched, so a 200-user pool is ~70s cold and ~2s on a re-run
+# (it was 15-20 min). Skip it entirely with --loadtest-users 0.
 if [[ "$REALM_READY" == true && "$LOADTEST_USERS" != "0" ]]; then
-  log "Seeding $LOADTEST_USERS load-test users — this can take a while (--loadtest-users 0 to skip)"
+  log "Seeding $LOADTEST_USERS load-test users (~70s for 200; --loadtest-users 0 to skip)"
   ADMIN_USER="$(kubectl -n atlas-system get secret keycloak-initial-admin \
                   -o jsonpath='{.data.username}' | base64 -d)"
   ADMIN_PASS="$(kubectl -n atlas-system get secret keycloak-initial-admin \

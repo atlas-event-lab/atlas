@@ -33,9 +33,9 @@ spec:
     volumes:
       - id: 0
         type: persistent-claim
-        size: 50Gi             # Strimzi REJECTS shrinking storage later, so keep this ≥ what's provisioned
+        size: 10Gi             # Strimzi REJECTS shrinking storage later, so keep this ≥ what's provisioned
         # class: <name>        # omitted → uses the cluster's DEFAULT StorageClass. Uncomment + set to pin one.
-        deleteClaim: false
+        deleteClaim: true
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka

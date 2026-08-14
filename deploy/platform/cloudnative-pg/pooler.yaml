@@ -39,13 +39,10 @@ spec:
     poolMode: transaction
     parameters:
       # Accept many app-side connections; they're cheap and multiplexed.
-      max_client_conn: "400"
-      # Real server connections per (user,database) pair. 9 service DBs × 12 = up to ~108
-      # server conns at full spread — comfortably under max_connections: 200, leaving room
-      # for Keycloak (direct), replication and admin/superuser slots.
-      default_pool_size: "12"
+      max_client_conn: "200"
+      default_pool_size: "8"
       min_pool_size: "0"             # no idle server conns while services are pre-cutover
-      reserve_pool_size: "3"         # burst headroom per pool
+      reserve_pool_size: "0"         # burst headroom per pool
       reserve_pool_timeout: "3"
       server_idle_timeout: "120"
       # Surface pooler errors in logs during the experiments.
