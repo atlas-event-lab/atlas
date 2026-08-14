@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-search-service
-  tag: "sha-cfa5a166ac5f06e7041bdb5db8fc18c7fe263aff"
+  tag: "sha-77dca296b072a36a1f158d4a7653b49048a07369"
 autoscaling:
   enabled: true
   minReplicas: 1
