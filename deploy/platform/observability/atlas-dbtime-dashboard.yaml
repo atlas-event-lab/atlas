@@ -1,0 +1,1151 @@
+# Grafana dashboard — Atlas · tiempo de DB: SQL vs idle-in-transaction.
+# Auto-cargado por el sidecar de Grafana de kube-prometheus-stack (label grafana_dashboard: "1")
+# y sincronizado por la app obs-config, cuyo include es un GLOB (*-dashboard.yaml): basta con
+# que este archivo exista para que se instale en el próximo sync. NO requiere ningún cambio en
+# el cluster: todas las métricas ya las exponen el PodMonitor del pooler (cnpg_pgbouncer_*), el
+# collector de CNPG (cnpg_backends_*) y el Actuator de cada servicio (hikaricp_*).
+#
+# QUÉ RESPONDE. Del tiempo que una conexión pasa dentro de una transacción, cuánto se va en
+# ejecutar SQL y cuánto en no hacer nada. PgBouncer define:
+#     total_xact_time   µs conectado a Postgres dentro de una transacción (ejecutando O idle)
+#     total_query_time  µs ejecutando queries
+# La resta es, por definición, tiempo pineado sin trabajo de base de datos. En Atlas eso es
+# típicamente la app llamando a otro servicio (booking → flight/hotel por Feign dentro de un
+# @Transactional) o esperando acks de Kafka con la transacción abierta.
+#
+# CÓMO LEER LOS NÚMEROS. Todas las series de "conexiones equivalentes" son segundos de estado
+# por segundo, es decir CONCURRENCIA MEDIA (ley de Little). Un valor de 2 significa "en promedio
+# 2 conexiones estaban en ese estado en todo momento", y se compara directamente contra los
+# backends físicos y contra default_pool_size.
+#
+# LO QUE ESTE DASHBOARD **NO** MIDE. Del tiempo ejecutando SQL no separa CPU de I/O de disco ni
+# de esperas por lock: total_query_time es wall-clock indiferenciado, y PgBouncer está del lado
+# equivocado del cable para distinguirlos. Ese desglose exigiría track_io_timing + contadores de
+# pg_stat_database (y muestreo de wait events para los locks) — deliberadamente fuera de alcance.
+#
+# DECISIONES DE MÉTODO (por qué no se hizo de la forma obvia):
+#   · Los promedios por transacción se derivan de CONTADORES (total_xact_time / total_xact_count)
+#     y no de los gauges avg_xact_time / avg_query_time de PgBouncer: esos son medias sobre el
+#     stats_period de cada pod, y promediar dos medias entre las 2 instancias del pooler da un
+#     número incorrecto. Se suma numerador y denominador por separado.
+#   · Los porcentajes llevan una guarda `and (rate(total_xact_count) > 0)`. Sin ella, un período
+#     sin tráfico se dibuja como 100 % idle — el artefacto es 1 − 0/0.
+#   · Los paneles de Hikari NO se cruzan con los de PgBouncer mediante label_replace. El
+#     denominador de Hikari es el checkout, el de PgBouncer la transacción, y un checkout puede
+#     contener varias transacciones: superponerlos exagera la brecha. Van lado a lado, en las
+#     mismas unidades de concurrencia media, y la comparación la hace el ojo.
+#   · La fila de pg_stat_activity está COLAPSADA y marcada: son gauges muestreados en el scrape,
+#     no contadores. Sirven de confirmación cualitativa, no de medida. Por lo mismo no hay panel
+#     de contención de locks: `cnpg_backends_waiting_total` es un gauge y una espera de lock de
+#     milisegundos no aparece casi nunca — un panel así daría falsos negativos convincentes.
+#   · La variable de instancia no tiene opción "All": pg_stat_activity es por instancia.
+#
+# VERIFICAR UNA VEZ (Explore de Grafana) antes de confiar en la fila de Hikari:
+#   label_values(hikaricp_connections_usage_seconds_count, job)
+# debe devolver nombres de servicio. Si tu PodMonitor etiqueta `job` de otra forma, cambia el
+# `by (job)` de esos dos paneles por el label que corresponda.
+#
+# Aplicar:  kubectl apply -f atlas-dbtime-dashboard.yaml   (o dejar que Argo CD lo sincronice)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-dbtime-dashboard
+  namespace: atlas-observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Atlas"
+data:
+  atlas-dbtime-dashboard.json: |
+    {
+      "uid": "atlas-db-time",
+      "title": "Atlas — DB time: SQL vs idle-in-transaction",
+      "tags": [
+        "atlas",
+        "database",
+        "pgbouncer",
+        "pinning",
+        "db-time"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "editable": true,
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          },
+          {
+            "name": "database",
+            "type": "custom",
+            "label": "Base de datos",
+            "description": "Bases de servicio multiplexadas por el pooler. 'All' = todas las *_db, así que una base nueva entra sola.",
+            "query": "booking_db,inventory_db,travel_cart_db,payment_db,search_db,hotel_db,flight_db,user_db",
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*_db",
+            "current": {
+              "selected": true,
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
+            },
+            "options": []
+          },
+          {
+            "name": "pginstance",
+            "type": "query",
+            "label": "Instancia Postgres",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "query": {
+              "query": "label_values(cnpg_backends_total, pod)",
+              "refId": "var"
+            },
+            "refresh": 2,
+            "multi": false,
+            "includeAll": false,
+            "description": "Solo afecta a la fila 'Confirmación desde Postgres'. SIN opción All a propósito: pg_stat_activity es por instancia y sumar primary + réplica da un número sin significado. Elige el primary.",
+            "current": {}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "row",
+          "title": "Resumen — ¿la conexión trabaja o espera?",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "% del tiempo de transacción SIN ejecutar SQL",
+          "description": "PgBouncer mide total_xact_time (microsegundos conectado a Postgres DENTRO de una transacción: ejecutando SQL o idle-in-transaction) y total_query_time (solo ejecutando). La resta ES, por definición, tiempo con la conexión tomada sin hacer trabajo de base de datos — típicamente la app llamando a otro servicio o esperando un ack de Kafka con la transacción abierta. Verde <40 %, rojo >60 %. Sin tráfico el panel se oculta en vez de marcar 100 %.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 40
+                  },
+                  {
+                    "color": "red",
+                    "value": 60
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "area",
+            "colorMode": "value",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "(100 * (1 - sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum(rate(cnpg_pgbouncer_stats_total_xact_time{database=~\"$database\"}[$__rate_interval])), 1))) and (sum(rate(cnpg_pgbouncer_stats_total_xact_count{database=~\"$database\"}[$__rate_interval])) > 0)",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Conexiones equivalentes EJECUTANDO SQL",
+          "description": "rate(total_query_time) en segundos por segundo = número medio de conexiones que en cualquier instante están realmente ejecutando SQL. Es la demanda REAL de conexiones. Compárala con los backends físicos del panel de al lado: la brecha es sobredimensionamiento del pool, no capacidad de base de datos.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "area",
+            "colorMode": "value",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval])) / 1e6",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Conexiones equivalentes PINEADAS (idle in tx)",
+          "description": "rate(total_xact_time − total_query_time) en segundos por segundo = número medio de conexiones tomadas dentro de una transacción sin ejecutar nada. Cada una de estas ocupa un slot del pool (default_pool_size) sin consumir CPU de Postgres.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "orange",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "area",
+            "colorMode": "value",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "(sum(rate(cnpg_pgbouncer_stats_total_xact_time{database=~\"$database\"}[$__rate_interval])) - sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval]))) / 1e6",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Transacciones / s",
+          "description": "rate(total_xact_count). Contexto para todo lo demás: un porcentaje de idle alto con throughput cerca de cero no significa nada.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "graphMode": "area",
+            "colorMode": "value",
+            "textMode": "auto",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(cnpg_pgbouncer_stats_total_xact_count{database=~\"$database\"}[$__rate_interval]))",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "row",
+          "title": "Global",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 6
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Descomposición del tiempo de conexión (global)",
+          "description": "Las dos áreas apiladas suman el tiempo total de transacción, expresado como número medio de conexiones (ley de Little: segundos de estado por segundo = concurrencia media). La línea es el número de backends FÍSICOS que Postgres tiene abiertos. Si la línea está muy por encima de la suma de las áreas, esas conexiones existen pero no trabajan.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 35,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              },
+              "unit": "short",
+              "decimals": 2,
+              "min": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ejecutando SQL"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pineada (idle in tx)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "orange"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "backends físicos"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "text"
+                    }
+                  },
+                  {
+                    "id": "custom.stacking",
+                    "value": {
+                      "mode": "none"
+                    }
+                  },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        8,
+                        4
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval])) / 1e6",
+              "legendFormat": "ejecutando SQL",
+              "refId": "A"
+            },
+            {
+              "expr": "(sum(rate(cnpg_pgbouncer_stats_total_xact_time{database=~\"$database\"}[$__rate_interval])) - sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval]))) / 1e6",
+              "legendFormat": "pineada (idle in tx)",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(cnpg_backends_total{datname=~\"$database\", pod=~\"$pginstance\"})",
+              "legendFormat": "backends físicos",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "% del tiempo de transacción sin SQL (global)",
+          "description": "La misma métrica del stat, en el tiempo. Sostenido por encima de 60 % significa que la duración de la transacción, y no la capacidad de la base, es lo que consume el pool.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "showPoints": "never"
+              },
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "(100 * (1 - sum(rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum(rate(cnpg_pgbouncer_stats_total_xact_time{database=~\"$database\"}[$__rate_interval])), 1))) and (sum(rate(cnpg_pgbouncer_stats_total_xact_count{database=~\"$database\"}[$__rate_interval])) > 0)",
+              "legendFormat": "% sin SQL",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "row",
+          "title": "Por base de datos (= por servicio)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "% del tiempo de transacción sin SQL, por base",
+          "description": "Qué servicio sostiene transacciones sin trabajar. Cada base es un servicio (database-per-service). Las bases sin tráfico desaparecen de la gráfica en vez de aparecer al 100 %.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never"
+              },
+              "unit": "percent",
+              "decimals": 1,
+              "min": 0,
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "(100 * (1 - sum by (database) (rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_time{database=~\"$database\"}[$__rate_interval])), 1))) and (sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_count{database=~\"$database\"}[$__rate_interval])) > 0)",
+              "legendFormat": "{{database}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Conexiones equivalentes ejecutando SQL, por base",
+          "description": "Trabajo real de base de datos, repartido por servicio. Apilado: el total coincide con el stat global.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 35,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              },
+              "unit": "short",
+              "decimals": 2,
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (database) (rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval])) / 1e6",
+              "legendFormat": "{{database}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Conexiones equivalentes pineadas (idle in tx), por base",
+          "description": "Slots del pool ocupados sin trabajar, por servicio. Es la contrapartida del panel de la izquierda: aquí se ve QUIÉN retiene conexiones sin usarlas.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 27
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 35,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              },
+              "unit": "short",
+              "decimals": 2,
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_time{database=~\"$database\"}[$__rate_interval])) - sum by (database) (rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval]))) / 1e6",
+              "legendFormat": "{{database}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Duración media por transacción — TOTAL, por base",
+          "description": "total_xact_time / total_xact_count. Cuánto dura una transacción de punta a punta desde la perspectiva del pooler.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 27
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never"
+              },
+              "unit": "ms",
+              "decimals": 1,
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_time{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_count{database=~\"$database\"}[$__rate_interval])), 0.001) / 1000",
+              "legendFormat": "{{database}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Duración media por transacción — SOLO SQL, por base",
+          "description": "total_query_time / total_xact_count: de los milisegundos que dura cada transacción, cuántos son SQL de verdad. Deliberadamente dividido entre el número de TRANSACCIONES (no de queries) para que sea comparable panel a panel con el de la izquierda: la diferencia entre ambas gráficas es el tiempo muerto por transacción.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 37
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never"
+              },
+              "unit": "ms",
+              "decimals": 1,
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (database) (rate(cnpg_pgbouncer_stats_total_query_time{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_count{database=~\"$database\"}[$__rate_interval])), 0.001) / 1000",
+              "legendFormat": "{{database}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Transacciones / s, por base",
+          "description": "Contexto de carga. Sin esto, los porcentajes de arriba no se pueden interpretar.",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 37
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "ops",
+              "decimals": 1,
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (database) (rate(cnpg_pgbouncer_stats_total_xact_count{database=~\"$database\"}[$__rate_interval]))",
+              "legendFormat": "{{database}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "row",
+          "title": "Confirmación desde Postgres (gauge muestreado — leer la advertencia)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 47
+          },
+          "collapsed": true,
+          "panels": [
+            {
+              "id": 16,
+              "type": "timeseries",
+              "title": "Backends por estado (pg_stat_activity)",
+              "description": "CUIDADO — esto es un GAUGE muestreado en cada scrape, no un contador: esperas cortas no aparecen. Sirve como confirmación cualitativa de las filas de arriba (que sí vienen de contadores y no pierden nada), no como medida. Elige UNA instancia en la variable de arriba: pg_stat_activity es por instancia.",
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 0,
+                "y": 48
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineWidth": 2,
+                    "fillOpacity": 12,
+                    "showPoints": "never"
+                  },
+                  "unit": "short",
+                  "decimals": 0,
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (state) (cnpg_backends_total{datname=~\"$database\", pod=~\"$pginstance\"})",
+                  "legendFormat": "{{state}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 17,
+              "type": "timeseries",
+              "title": "Backends 'idle in transaction' por base",
+              "description": "Mismo gauge, desglosado por base. Debe seguir la forma del panel 'Conexiones equivalentes pineadas'; si no la sigue, sospecha de la variable de instancia o de tráfico que no pasa por el pooler.",
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 12,
+                "y": 48
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineWidth": 2,
+                    "fillOpacity": 12,
+                    "showPoints": "never"
+                  },
+                  "unit": "short",
+                  "decimals": 0,
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (datname) (cnpg_backends_total{datname=~\"$database\", pod=~\"$pginstance\", state=\"idle in transaction\"})",
+                  "legendFormat": "{{datname}}",
+                  "refId": "A"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "type": "row",
+          "title": "Lado aplicación — Hikari (Actuator)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 57
+          },
+          "collapsed": true,
+          "panels": [
+            {
+              "id": 19,
+              "type": "timeseries",
+              "title": "Conexiones equivalentes retenidas por la app (Hikari)",
+              "description": "rate(hikaricp_connections_usage_seconds_sum) = número medio de conexiones que la app tiene tomadas. Mismas unidades que los paneles de PgBouncer, así que se comparan directamente: lo que la app retiene por encima de lo que ejecuta es tiempo con la conexión en la mano sin usarla. Se dejan como paneles separados a propósito, sin cruzar labels entre fuentes.",
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 0,
+                "y": 58
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineWidth": 2,
+                    "fillOpacity": 12,
+                    "showPoints": "never"
+                  },
+                  "unit": "short",
+                  "decimals": 2,
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (job) (rate(hikaricp_connections_usage_seconds_sum[$__rate_interval]))",
+                  "legendFormat": "{{job}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 20,
+              "type": "timeseries",
+              "title": "Tiempo medio que la app retiene una conexión (Hikari)",
+              "description": "sum / count del mismo timer. Ojo: el denominador es CHECKOUT de Hikari, no transacción de PgBouncer — un checkout puede contener varias transacciones, así que no restes este número contra los milisegundos por transacción de arriba.",
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 12,
+                "y": 58
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineWidth": 2,
+                    "fillOpacity": 12,
+                    "showPoints": "never"
+                  },
+                  "unit": "s",
+                  "decimals": 3,
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true,
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ]
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (job) (rate(hikaricp_connections_usage_seconds_sum[$__rate_interval])) / clamp_min(sum by (job) (rate(hikaricp_connections_usage_seconds_count[$__rate_interval])), 0.001)",
+                  "legendFormat": "{{job}}",
+                  "refId": "A"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
