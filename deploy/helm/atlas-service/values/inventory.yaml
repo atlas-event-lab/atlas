@@ -3,7 +3,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-inventory-service
-  tag: "sha-d6c4b10f82e82432554225f834f6e314c4acaddb" # bootstrap only — the service CI write-back overwrites with sha-<commit>
+  tag: "sha-06c2a0a6073f3ff66afdd1f3094a4562bb45ace2" # bootstrap only — the service CI write-back overwrites with sha-<commit>
 autoscaling:
   enabled: true
   minReplicas: 2
