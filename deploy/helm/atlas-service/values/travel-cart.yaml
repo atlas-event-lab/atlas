@@ -4,7 +4,7 @@
 
 image:
   repository: ghcr.io/atlas-event-lab/atlas-travel-cart-service
-  tag: "sha-124a9f545a1e10accb438a51f76d1de5849b6fa3"
+  tag: "sha-6d22f2cce914947efa5d0c50cac65edd0fd108a4"
 autoscaling:
   enabled: true
   minReplicas: 1
