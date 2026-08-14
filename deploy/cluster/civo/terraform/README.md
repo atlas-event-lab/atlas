@@ -30,9 +30,9 @@ terraform plan                            # preview — nothing is created yet
 terraform apply                           # create the cluster (~2 min). Type "yes".
 
 # point kubectl at the new cluster (reliable — falls back to the Civo CLI if the
-# provider returns an empty kubeconfig, which it often does; see TS-CIVO-01):
+# provider returns an empty kubeconfig, which it often does; see TS-CIVO-01).
+# This OVERWRITES ~/.kube/config (kubectl's default), so kubectl works in any shell
 ./save-kubeconfig.sh
-export KUBECONFIG=~/.kube/civo-atlas.yaml
 kubectl get nodes                         # expect 3 Ready nodes
 ```
 

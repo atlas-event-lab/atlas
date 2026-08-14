@@ -4,19 +4,25 @@
 #
 # `terraform output -raw kubeconfig` is flaky: the civo/civo provider frequently returns the
 # kubeconfig EMPTY right after `apply` (and a refresh does not repopulate it). That is the #1
-# "empty civo-atlas.yaml" papercut (TS-CIVO-01). This script tries Terraform first and, if that
+# "empty kubeconfig" papercut (TS-CIVO-01). This script tries Terraform first and, if that
 # comes back empty, falls back to the Civo CLI — which fetches from the API and always works.
 #
 # Usage (from this folder, after `terraform apply`):
-#   ./save-kubeconfig.sh                       # -> ~/.kube/civo-atlas.yaml
+#   ./save-kubeconfig.sh                       # -> OVERWRITES ~/.kube/config (kubectl's default)
 #   ./save-kubeconfig.sh /path/to/kubeconfig   # custom destination
-#   export KUBECONFIG=~/.kube/civo-atlas.yaml && kubectl get nodes
+#   kubectl get nodes                          # works in ANY shell, no `export KUBECONFIG` needed
+#
+# By default this OVERWRITES ~/.kube/config — the file kubectl reads with no env var — so kubectl
+# just works globally, no per-shell `export`. Civo clusters here are ephemeral and unique: a recreate
+# invalidates the previous one, so replacing the whole default config (not merging) is intentional.
+# The prior config is backed up to ~/.kube/config.bak first. NOTE: this also drops any other contexts
+# in that file (e.g. Oracle OKE / minikube); recover them from the .bak, or pass a custom destination.
 #
 # Requires: terraform; the Civo CLI only if the Terraform output is empty (the common case).
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 cd "$(dirname "$0")"
-DEST="${1:-$HOME/.kube/civo-atlas.yaml}"
+DEST="${1:-$HOME/.kube/config}"
 
 valid() { grep -q '^[[:space:]]*server:' <<<"${1:-}"; }   # a real kubeconfig has a `server:` line
 
@@ -42,6 +48,9 @@ if ! valid "$kc"; then
 fi
 
 mkdir -p "$(dirname "$DEST")"
+# Back up the previous config before overwriting (rolling single backup; recoverable if needed).
+[ -f "$DEST" ] && cp -f "$DEST" "$DEST.bak" && echo ">> backed up previous config to $DEST.bak"
 printf '%s\n' "$kc" > "$DEST"
+chmod 600 "$DEST"                                  # holds the client private key — keep it private
 echo ">> kubeconfig saved to $DEST"
-echo ">> next:  export KUBECONFIG=$DEST && kubectl get nodes"
+echo ">> next:  kubectl get nodes    # works in any shell, no 'export KUBECONFIG' needed"

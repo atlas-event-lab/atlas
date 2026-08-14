@@ -127,7 +127,7 @@ straight at the experiment target:
 cd deploy/cluster/civo/terraform      # from repo root
 export CIVO_TOKEN="your-civo-api-key"
 terraform init && terraform apply
-./save-kubeconfig.sh && export KUBECONFIG=~/.kube/civo-atlas.yaml   # reliable (falls back to the Civo CLI)
+./save-kubeconfig.sh   # writes ~/.kube/config
 kubectl get nodes
 ```
 

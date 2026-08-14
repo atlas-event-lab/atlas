@@ -51,9 +51,10 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
 **Symptom.** `kubectl get nodes` fails, in one of two ways:
 
 - **A — empty kubeconfig.** `terraform apply` succeeds and prints `api_endpoint`, but
-  `terraform output -raw kubeconfig > ~/.kube/civo-atlas.yaml` writes an **empty** file, and
+  `terraform output -raw kubeconfig > ~/.kube/config` writes an **empty** file, and
   kubectl fails with `The connection to the server localhost:8080 was refused` (kubectl's
-  default when it has no usable kubeconfig).
+  default when it has no usable kubeconfig). (`save-kubeconfig.sh` guards against this — its
+  `valid()` check refuses to write an empty file, so it never clobbers a good `~/.kube/config`.)
 - **B — stale IP after a recreate.** You `destroy`ed and re-`apply`ed the cluster (the
   documented "off when idle" workflow), and now kubectl hangs then fails with
   `dial tcp <old-ip>:6443: i/o timeout`. The kubeconfig is **valid but points at the previous
@@ -65,9 +66,11 @@ can point at the exact case. Entries follow the same shape — **Symptom → Cau
    file you write is empty. It is also **only populated at create time** — on a state that has
    since been refreshed or re-applied, `terraform output -raw kubeconfig` returns **empty**, so
    it can't be used to recover a stale kubeconfig either.
-2. `civo kubernetes config … --save` **merges into `~/.kube/config`**, but if you exported
-   `KUBECONFIG` to the empty `civo-atlas.yaml`, kubectl keeps reading that empty file — the
-   env var wins over `~/.kube/config`.
+2. `save-kubeconfig.sh` now writes straight into `~/.kube/config` (kubectl's default), so plain
+   `kubectl` uses it in every shell — no `export`. Older docs told you to
+   `export KUBECONFIG=~/.kube/civo-atlas.yaml` (a separate file); a **leftover `export KUBECONFIG`**
+   in your shell still wins over `~/.kube/config`, so `unset KUBECONFIG` if a stale terminal
+   keeps reading an old/empty file.
 3. A recreated cluster gets a **new API server IP**, but your saved kubeconfig (and any
    `atlas-civo` context in `~/.kube/config`) still holds the old one → `i/o timeout`.
 
@@ -80,8 +83,8 @@ and don't rely on `terraform output` here).
 > here. Reach for the manual steps below only if that script itself failed (e.g. the Civo CLI
 > isn't installed or authenticated).
 
-**Fix.** Fetch the kubeconfig with the Civo CLI **to stdout** (not `--save`) and point
-`KUBECONFIG` at that file:
+**Fix.** Fetch the kubeconfig with the Civo CLI **to stdout** and overwrite `~/.kube/config`
+(exactly what `save-kubeconfig.sh` does — do this by hand only if that script itself failed):
 
 ```bash
 # 1. Save your API key and make it the current one (the token, not the literal word).
@@ -91,12 +94,12 @@ civo apikey ls                                    # confirm it's saved and curre
 # 2. Confirm the cluster is ACTIVE and note its region.
 civo kubernetes list --region nyc1                # region = whatever you set in tfvars, LOWERCASE
 
-# 3. Dump the kubeconfig straight to the file, then point kubectl at it.
-civo kubernetes config atlas-civo --region nyc1 > ~/.kube/civo-atlas.yaml
-head -5 ~/.kube/civo-atlas.yaml                   # must show YAML: apiVersion / clusters / server
-grep server: ~/.kube/civo-atlas.yaml              # after a recreate: confirm it's the NEW api_endpoint IP
-export KUBECONFIG=~/.kube/civo-atlas.yaml
-kubectl get nodes                                 # expect 3 Ready nodes
+# 3. Overwrite kubectl's default config (back it up first, like save-kubeconfig.sh does).
+cp -f ~/.kube/config ~/.kube/config.bak 2>/dev/null || true
+civo kubernetes config atlas-civo --region nyc1 > ~/.kube/config
+head -5 ~/.kube/config                            # must show YAML: apiVersion / clusters / server
+grep server: ~/.kube/config                       # after a recreate: confirm it's the NEW api_endpoint IP
+kubectl get nodes                                 # expect 3 Ready nodes — any shell, no 'export'
 ```
 
 **Notes.**
@@ -105,17 +108,15 @@ kubectl get nodes                                 # expect 3 Ready nodes
   `database_region_not_found`. Confirm the code with `civo region ls`.
 - Use the real key or `$CIVO_TOKEN` **with the `$`** — `civo apikey save atlas CIVO_TOKEN`
   stores the literal string and every later call fails auth.
-- Prefer the `> file` redirect over `--save`: `--save` merges into `~/.kube/config` and
-  collides with an exported `KUBECONFIG`.
 - Always `head -5` the file to confirm it has YAML before running `kubectl`.
-- **A brand-new terminal times out on the OLD IP?** `export KUBECONFIG` is **per-shell** — a fresh
-  terminal without it falls back to `~/.kube/config`, whose `atlas-civo` context still holds a
-  *previous* cluster's API IP (the `> file` / `--local-path` forms never updated it). Either
-  `export KUBECONFIG=~/.kube/civo-atlas.yaml` in that shell, or refresh the default context once so
-  plain `kubectl` works everywhere: `civo kubernetes config atlas-civo --save --region nyc1`
-  (no `--local-path`, so it merges into `~/.kube/config`).
-- **Foolproof fallback:** Civo Dashboard → your cluster → **Download Config**, then
-  `export KUBECONFIG=<downloaded-file>`.
+- **A brand-new terminal times out on the OLD IP?** Because `save-kubeconfig.sh` writes
+  `~/.kube/config` (kubectl's default), every shell picks up the current cluster with **no
+  `export`**. A timeout on the *old* IP just means the config is stale — **re-run
+  `./save-kubeconfig.sh`** (or the step-3 command above) to overwrite it with the current
+  cluster's endpoint. If a leftover `export KUBECONFIG` from the old workflow lingers in that
+  shell, `unset KUBECONFIG` so kubectl reads `~/.kube/config` again.
+- **Foolproof fallback:** Civo Dashboard → your cluster → **Download Config**, then overwrite the
+  default config (back up first): `cp -f ~/.kube/config ~/.kube/config.bak; mv <downloaded-file> ~/.kube/config`.
 
 ### TS-CIVO-02 — Civo: a pod is stuck in `ContainerCreating` (`FailedCreatePodSandBox`)
 

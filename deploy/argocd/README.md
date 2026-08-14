@@ -30,8 +30,7 @@ cd deploy/cluster/civo/terraform      # from repo root
 export CIVO_TOKEN="your-civo-api-key" #go to your civo Dashboard (Account → Security → API keys)
 cp terraform.tfvars.example terraform.tfvars
 terraform init && terraform apply    # ~ 5 min
-./save-kubeconfig.sh
-export KUBECONFIG=~/.kube/civo-atlas.yaml
+./save-kubeconfig.sh                  # writes ~/.kube/config — kubectl works on any terminal
 ```
 See [Civo cluster](../cluster/civo/terraform/README.md) for more details.
 After the cluster is ready, verify that all nodes are healthy:

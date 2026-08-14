@@ -14,5 +14,5 @@ output "kubeconfig" {
 }
 
 output "save_kubeconfig_hint" {
-  value = "./save-kubeconfig.sh && export KUBECONFIG=~/.kube/civo-atlas.yaml && kubectl get nodes"
+  value = "./save-kubeconfig.sh && kubectl get nodes    # writes ~/.kube/config — no 'export' needed"
 }

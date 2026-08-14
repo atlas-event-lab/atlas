@@ -63,7 +63,7 @@ cmd_up() {
   # Save the kubeconfig reliably (the civo provider often returns an empty one right after apply —
   # the helper falls back to the Civo CLI). Then point kubectl at it.
   if bash "$TF_DIR/save-kubeconfig.sh"; then
-    log "Run:  export KUBECONFIG=~/.kube/civo-atlas.yaml && kubectl get nodes"
+    log "Run:  kubectl get nodes    # save-kubeconfig.sh wrote ~/.kube/config — no 'export' needed"
   else
     warn "Could not save the kubeconfig automatically — see TROUBLESHOOTING TS-CIVO-01."
   fi
